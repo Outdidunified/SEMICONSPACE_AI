@@ -1,16 +1,12 @@
-# Core requirements
-fastapi
-uvicorn
-python-dotenv
+# Minimal core requirements
+fastapi==0.116.1
+uvicorn==0.35.0
+python-dotenv==1.1.1
 
-# AI dependencies
-llama-index-core
-pydantic
-numpy
-pathlib
-tqdm
+# Lightweight AI dependencies
+llama-index-core==0.12.52.post1
+pydantic==2.11.7
+numpy==2.0.2
+tqdm==4.67.1
 
-# Optional GPU dependencies - comment out if not using GPU
-# torch>=2.0 # Requires significant disk space
-# nvidia-cublas-cu12
-# nvidia-cudnn-cu12
+# Note: GPU packages removed - install separately if needed

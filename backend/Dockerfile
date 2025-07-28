@@ -1,5 +1,9 @@
-# Use full python image for larger disk space
+# Optimized build with explicit disk management
 FROM python:3.9 as builder
+
+# Clean up apt cache and temporary files immediately
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
