@@ -16,17 +16,25 @@ from llama_index.core import VectorStoreIndex
 
 # Required files and directories
 REQUIRED_FILES = ["vector_store.json"]
-REQUIRED_DIRS = ["data/simple", "data/datasheets/learned"]
+REQUIRED_DIRS = ["data/simple", "data/datasheets/learned", "data/docs"]
 
 def initialize_environment():
     """Create all required directories and files at startup"""
     try:
-        # Create required directories
         base_dir = Path(__file__).parent.parent
+        # Ensure base data directory exists
+        data_dir = base_dir / "data"
+        if not data_dir.exists():
+            os.makedirs(data_dir)
+            logger.info(f"Created data directory: {data_dir}")
+            
+        # Create all required subdirectories
         for dir_path in REQUIRED_DIRS:
-            os.makedirs(base_dir / dir_path, exist_ok=True)
+            full_path = base_dir / dir_path
+            if not full_path.exists():
+                os.makedirs(full_path)
+                logger.info(f"Created directory: {full_path}")
         
-        # Create or update vector_store.json if not present or invalid
         vector_store_path = base_dir / "data/simple" / "vector_store.json"
         if not vector_store_path.exists():
             with open(vector_store_path, 'w', encoding="utf-8") as f:
@@ -51,7 +59,7 @@ def initialize_environment():
 STORAGE_DIR = Path(__file__).parent.parent / "data" / "simple"
 
 # Initialize logging and environment
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 initialize_environment()
 
@@ -78,20 +86,50 @@ def validate_storage_files():
 @lru_cache(maxsize=128)
 def ask_ai(query: str) -> str:
     """Process a query using the index"""
-    index = load_or_build_index()
-    retriever = VectorIndexRetriever(
-        index=index,
-        similarity_top_k=15,  # Increased to capture learned data better
-        vector_store_query_mode="default",
-        alpha=0.8  # Adjusted to prioritize learned data
-    )
-    query_engine = RetrieverQueryEngine.from_args(
-        retriever,
-        response_mode="compact",
-        timeout=10
-    )
-    response = query_engine.query(query)
-    return str(response)
+    try:
+        index = load_or_build_index()
+        retriever = VectorIndexRetriever(
+            index=index,
+            similarity_top_k=15,
+            vector_store_query_mode="default",
+            alpha=0.8
+        )
+        
+        # Retrieve nodes and validate
+        nodes = retriever.retrieve(query)
+        valid_nodes = []
+        for node in nodes:
+            if hasattr(node, 'node') and hasattr(node.node, 'metadata') and node.node.text:
+                if node.node.node_id in index.docstore.docs:
+                    valid_nodes.append(node)
+                else:
+                    logger.warning(f"Node ID {node.node.node_id} not found in docstore, skipping")
+            else:
+                logger.warning(f"Invalid node structure, skipping: {node}")
+        
+        if not valid_nodes:
+            logger.warning("No valid nodes retrieved for query")
+            return "I couldn't find any relevant information to answer that."
+
+        # Check for AI identity query
+        if query.lower().strip() in ["tell me your name", "what is your name", "who are you"]:
+            for node in valid_nodes:
+                if "your name is" in node.node.text.lower() and "semicon ai" in node.node.text.lower():
+                    return "I am Semicon AI, nice to meet you!"
+
+        query_engine = RetrieverQueryEngine.from_args(
+            retriever,
+            response_mode="compact",
+            timeout=10
+        )
+        response = query_engine.query(query)
+        if not response or not hasattr(response, 'response'):
+            logger.error("Invalid response from query engine")
+            return "I encountered an issue processing your request."
+        return str(response.response)
+    except Exception as e:
+        logger.error(f"Query processing error: {str(e)}", exc_info=True)
+        return "I encountered an error while processing your request. Please try again."
 
 async def ask_ai_streaming(query: str):
     """Stream tokens for a query"""
@@ -119,40 +157,52 @@ async def ask_ai_streaming(query: str):
             logger.warning("LLM does not support streaming, yielding full response")
             yield str(response)
     except Exception as e:
-        logger.error(f"Streaming query failed: {e}")
+        logger.error(f"Streaming query failed: {e}", exc_info=True)
         yield "[Error] Something went wrong during response streaming]"
 
 def learn_from_interaction(query: str, answer: str):
     """Append the Q&A to the index so the system learns from interactions."""
     try:
-        index = load_or_build_index()  # Use the cached index
-        storage_context = index.storage_context  # Use the existing storage context
+        index = load_or_build_index()
+        storage_context = index.storage_context
+
+        if not query.strip() or not answer.strip():
+            logger.warning("Empty query or answer in learning attempt")
+            return
 
         combined_text = f"Q: {query}\nA: {answer}"
         node = TextNode(text=combined_text)
 
-        # Add metadata to the node for better retrieval
         node_id = str(uuid.uuid4())
         node.metadata = {
             "type": "learned_interaction",
             "timestamp": str(int(time.time())),
-            "query": query[:100],  # First 100 chars for reference
+            "query": query[:100],
             "_node_type": "TextNode",
             "document_id": node_id,
             "doc_id": node_id,
-            "ref_doc_id": node_id
+            "ref_doc_id": node_id,
+            "valid": True,
+            "is_ai_identity": "your name is" in query.lower() and "semicon ai" in query.lower()
         }
 
-        index.insert_nodes([node])
+        if not all(hasattr(node, attr) for attr in ['text', 'metadata']):
+            logger.error("Invalid node structure in learning attempt")
+            return
+
+        try:
+            index.insert_nodes([node])
+            logger.debug(f"Successfully learned interaction: {node_id}")
+        except Exception as e:
+            logger.error(f"Failed to insert learned node: {str(e)}", exc_info=True)
         
-        # Also save to file for backup and transparency
         _save_interaction_to_file(query, answer)
         
         try:
-            index.storage_context.persist(persist_dir=STORAGE_DIR)
+            storage_context.persist(persist_dir=STORAGE_DIR)
             logger.info(f"✅ Learned from interaction and updated the index. Persisted to {STORAGE_DIR}")
         except Exception as e:
-            logger.error(f"Failed to persist index: {str(e)}")
+            logger.error(f"Failed to persist index: {str(e)}", exc_info=True)
             raise
     except Exception as e:
         logger.error(f"Failed to learn from interaction: {str(e)}", exc_info=True)
@@ -177,4 +227,3 @@ def _save_interaction_to_file(query: str, answer: str):
         logger.debug(f"Saved interaction to file: {filepath}")
     except Exception as e:
         logger.warning(f"Failed to save interaction to file: {str(e)}")
-        # Don't raise here as this is just backup functionality

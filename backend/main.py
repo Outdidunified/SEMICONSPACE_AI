@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
+import random
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator
@@ -20,6 +21,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -97,12 +99,31 @@ async def health_check():
         raise HTTPException(status_code=503, detail="Service unavailable")
 
 def process_response(response: str) -> str:
-    """Add context and transform the AI response"""
-    if "datasheet" in response.lower():
+    """Transform the AI response to be more conversational and extract name greetings"""
+    # Keep technical responses as-is
+    if any(word in response.lower() for word in ["datasheet", "specification", "technical"]):
         return response
-    elif "specification" in response.lower():
-        return response
-    return response
+        
+    # Detect and extract name greeting (e.g., "Ah, nice to meet [name]!")
+    if "Ah, nice to meet" in response:
+        start_idx = response.find("Ah, nice to meet") + len("Ah, nice to meet")
+        end_idx = response.find("!", start_idx)
+        if end_idx != -1:
+            return response[start_idx:end_idx + 1].strip()
+    
+    # Make learned responses more friendly
+    if "Q:" in response and "A:" in response:
+        answer = response.split("A:")[1].strip()
+        if answer.startswith(("Ah,", "Oh,", "Well,")):
+            return answer
+        return f"Ah, {answer[0].lower() + answer[1:]}"
+        
+    # Handle AI identity response
+    if "I am Semicon AI" in response:
+        return "I am Semicon AI, nice to meet you!"
+    
+
+    return f" {response}"
 
 @app.post("/ask")
 async def ask(request: QueryRequest):
@@ -119,6 +140,8 @@ async def ask(request: QueryRequest):
     try:
         logger.info(f"Processing query: {request.query}")
         cache_key = f"query:{hash(request.query + (request.context or ''))}"
+        
+        # Try cached response first
         if redis_client:
             cached = await redis_client.get(cache_key)
             if cached:
@@ -130,25 +153,40 @@ async def ask(request: QueryRequest):
                     "timestamp": datetime.now().isoformat()
                 })
 
-        result = ask_ai(request.query)
-        processed_result = process_response(result)
+        # Process new query with enhanced error handling
+        try:
+            result = ask_ai(request.query)
+            processed_result = process_response(result)
+            
+            # Learn from successful interaction
+            from ai_engine.ai_engine import learn_from_interaction
+            try:
+                learn_from_interaction(request.query, result)
+            except Exception as learn_error:
+                logger.error(f"Failed to learn from interaction: {learn_error}")
+                # Continue without failing the request
 
-        # ✅ Learn from this interaction
-        from ai_engine.ai_engine import learn_from_interaction
-        learn_from_interaction(request.query, result)
-        
-        if redis_client:
-            await redis_client.set(cache_key, json.dumps({"response": result}), ex=3600)
-            logger.debug("Cached new response")
+            if redis_client:
+                await redis_client.set(cache_key, json.dumps({"response": result}), ex=3600)
+                logger.debug("Cached new response")
 
-        return {
-            "response": processed_result,
-            "cached": False,
-            "timestamp": datetime.now().isoformat()
-        }
+            return {
+                "response": processed_result,
+                "cached": False,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as query_error:
+            logger.error(f"Query processing failed: {query_error}")
+            return JSONResponse(content={
+                "response": "I encountered an error processing your request. Please try again.",
+                "cached": False,
+                "timestamp": datetime.now().isoformat()
+            }, status_code=200)
+
     except Exception as e:
-        logger.error(f"Error processing query: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error processing query")
+        logger.error(f"Request handling failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error processing request")
 
 @app.post("/ask-stream")
 async def ask_stream(request: Request):

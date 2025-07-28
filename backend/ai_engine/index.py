@@ -5,6 +5,7 @@ from llama_index.core.vector_stores.simple import SimpleVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from pathlib import Path
 from datetime import datetime
+import json
 from utils import get_chunked_documents
 from config import configure_settings
 
@@ -72,11 +73,22 @@ def load_or_build_index():
     global _index
     logger.info(f"Attempting to load persisted index from {PERSIST_DIR}")
     try:
-        # Check if all required storage files exist
-        required_files = ["vector_store.json", "docstore.json", "index_store.json"]
+        # Check if all required storage files exist and are valid
+        required_files = ["vector_store.json", "docstore.json", "index_store.json", "graph_store.json"]
         all_files_exist = all(os.path.exists(os.path.join(PERSIST_DIR, f)) for f in required_files)
         
         if all_files_exist:
+            # Additional validation for empty stores
+            with open(os.path.join(PERSIST_DIR, "vector_store.json"), "r") as f:
+                vector_data = json.load(f)
+                if not vector_data:
+                    raise ValueError("Vector store is empty - requires rebuild")
+                    
+            with open(os.path.join(PERSIST_DIR, "graph_store.json"), "r") as f:
+                graph_data = json.load(f)
+                if not graph_data.get("graph_dict"):
+                    raise ValueError("Graph store is empty - requires rebuild")
+
             # Load the entire storage context
             storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
             _index = VectorStoreIndex(nodes=[], storage_context=storage_context)
@@ -86,22 +98,19 @@ def load_or_build_index():
             logger.info(f"Missing storage files in {PERSIST_DIR}. Creating new...")
     except Exception as e:
         logger.warning(f"Failed to load persisted index: {str(e)}. Rebuilding...")
-        # Clean up corrupted files
-        for file in ["vector_store.json", "docstore.json", "index_store.json"]:
+        # Clean up corrupted/empty files
+        for file in required_files:
             file_path = os.path.join(PERSIST_DIR, file)
             if os.path.exists(file_path):
                 try:
                     os.remove(file_path)
-                    logger.debug(f"Removed corrupted file: {file_path}")
+                    logger.debug(f"Removed problematic file: {file_path}")
                 except Exception as remove_error:
-                    logger.error(f"Failed to remove corrupted file {file_path}: {remove_error}")
+                    logger.error(f"Failed to remove file {file_path}: {remove_error}")
 
-    # Fall back to cached or new index
-    if _index is None:
-        logger.info("Creating new in-memory index...")
-        return create_index()
-    logger.info("Reusing existing in-memory index")
-    return _index
+    # Force create new index if loading failed
+    logger.info("Creating new in-memory index...")
+    return create_index()
 
 # Maintain backward compatibility alias
 load_index = load_or_build_index

@@ -1,0 +1,15 @@
+Timestamp: 1753705582
+Query: keep in mind that your name is Semicon AI
+
+Answer: Hello! As Semicon AI, I'm here to help. Based on the provided context information, I can see that we're looking at a datasheet for the ZX-101 Analog Temperature Sensor.
+
+To answer your query, let me summarize the key points:
+
+* The ZX-101 is an analog temperature sensor with a temperature range of -40°C to +125°C.
+* It outputs a voltage proportional to Celsius temperature, making it suitable for general-purpose thermal measurement.
+* The device features low power consumption (<60 uA) and operates within a supply voltage range of 3.0V to 5.5V.
+
+As Semicon AI, I can see that this sensor is ideal for various applications such as environmental monitoring, industrial temperature control, consumer electronics, and HVAC systems.
+
+Would you like me to highlight any specific aspects or features of the ZX-101 Analog Temperature Sensor?
+---

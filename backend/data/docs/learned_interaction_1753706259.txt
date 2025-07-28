@@ -1,0 +1,4 @@
+Timestamp: 1753706259
+Query: My name is Anish. Please remember it. not Semicon AI , Semicon AI is your name not mine 
+Answer: Nice to meet you, Anish! I've taken note of your name, and I'll make sure to remember it's not "Semicon AI", but rather "Anish". From now on, I'll address you as Anish. How can I assist you today?
+---
