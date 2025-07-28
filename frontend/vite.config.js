@@ -6,7 +6,11 @@ export default defineConfig({
   server: {
     port: 9000,
     proxy: {
-      '/query': 'http://localhost:9001',
+      '/api': {
+        target: 'http://localhost:9001',
+        changeOrigin: true,
+        secure: false
+      }
     },
   },
 })

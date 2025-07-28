@@ -16,7 +16,7 @@ os.makedirs(MEMORY_DIR, exist_ok=True)
 os.makedirs(PERSIST_DIR, exist_ok=True)  # Ensure directory exists
 
 # Initialize logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Configure settings
@@ -58,8 +58,9 @@ def create_index():
         )
         logger.info("Index created successfully")
         
-        vector_store.persist(os.path.join(PERSIST_DIR, "vector_store.json"))
-        logger.info(f"New index persisted to {os.path.join(PERSIST_DIR, 'vector_store.json')} at {datetime.now().isoformat()}")
+        # Persist the entire storage context (includes docstore, vector store, etc.)
+        storage_context.persist(persist_dir=PERSIST_DIR)
+        logger.info(f"New index persisted to {PERSIST_DIR} at {datetime.now().isoformat()}")
     except Exception as e:
         logger.error(f"Failed to create or persist index: {str(e)}")
         raise
@@ -69,25 +70,31 @@ def create_index():
 def load_or_build_index():
     """Load existing persisted index or create new if not available"""
     global _index
-    vector_store_path = os.path.join(PERSIST_DIR, "vector_store.json")
-    logger.info(f"Attempting to load persisted index from {vector_store_path}")
+    logger.info(f"Attempting to load persisted index from {PERSIST_DIR}")
     try:
-        # Attempt to load from persisted storage
-        if os.path.exists(vector_store_path):
-            vector_store = SimpleVectorStore.from_persist_path(vector_store_path)
-            storage_context = StorageContext.from_defaults(vector_store=vector_store)
-            # Workaround for missing docstore attribute
-            if vector_store._index_struct.index.nodes:  # Check internal nodes
-                _index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
-                logger.info(f"Loaded existing persisted index from {vector_store_path}")
-                return _index
-            else:
-                logger.warning(f"Persisted vector store at {vector_store_path} is empty or invalid. Rebuilding...")
-                os.remove(vector_store_path)
+        # Check if all required storage files exist
+        required_files = ["vector_store.json", "docstore.json", "index_store.json"]
+        all_files_exist = all(os.path.exists(os.path.join(PERSIST_DIR, f)) for f in required_files)
+        
+        if all_files_exist:
+            # Load the entire storage context
+            storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
+            _index = VectorStoreIndex(nodes=[], storage_context=storage_context)
+            logger.info(f"Loaded existing persisted index from {PERSIST_DIR}")
+            return _index
         else:
-            logger.info(f"No persisted index found at {vector_store_path}. Creating new...")
+            logger.info(f"Missing storage files in {PERSIST_DIR}. Creating new...")
     except Exception as e:
         logger.warning(f"Failed to load persisted index: {str(e)}. Rebuilding...")
+        # Clean up corrupted files
+        for file in ["vector_store.json", "docstore.json", "index_store.json"]:
+            file_path = os.path.join(PERSIST_DIR, file)
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    logger.debug(f"Removed corrupted file: {file_path}")
+                except Exception as remove_error:
+                    logger.error(f"Failed to remove corrupted file {file_path}: {remove_error}")
 
     # Fall back to cached or new index
     if _index is None:

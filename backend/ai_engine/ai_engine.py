@@ -1,6 +1,8 @@
 import os
+import uuid
 import logging
 import json
+import time
 from functools import lru_cache
 from pathlib import Path
 from llama_index.core.query_engine import RetrieverQueryEngine
@@ -129,9 +131,25 @@ def learn_from_interaction(query: str, answer: str):
         combined_text = f"Q: {query}\nA: {answer}"
         node = TextNode(text=combined_text)
 
+        # Add metadata to the node for better retrieval
+        node_id = str(uuid.uuid4())
+        node.metadata = {
+            "type": "learned_interaction",
+            "timestamp": str(int(time.time())),
+            "query": query[:100],  # First 100 chars for reference
+            "_node_type": "TextNode",
+            "document_id": node_id,
+            "doc_id": node_id,
+            "ref_doc_id": node_id
+        }
+
         index.insert_nodes([node])
+        
+        # Also save to file for backup and transparency
+        _save_interaction_to_file(query, answer)
+        
         try:
-            index.storage_context.vector_store.persist(os.path.join(STORAGE_DIR, "vector_store.json"))
+            index.storage_context.persist(persist_dir=STORAGE_DIR)
             logger.info(f"✅ Learned from interaction and updated the index. Persisted to {STORAGE_DIR}")
         except Exception as e:
             logger.error(f"Failed to persist index: {str(e)}")
@@ -139,3 +157,24 @@ def learn_from_interaction(query: str, answer: str):
     except Exception as e:
         logger.error(f"Failed to learn from interaction: {str(e)}", exc_info=True)
         raise
+
+def _save_interaction_to_file(query: str, answer: str):
+    """Save interaction to a file for backup and transparency"""
+    try:
+        learned_dir = Path(__file__).parent.parent / "data" / "docs"
+        learned_dir.mkdir(exist_ok=True)
+        
+        timestamp = int(time.time())
+        filename = f"learned_interaction_{timestamp}.txt"
+        filepath = learned_dir / filename
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f"Timestamp: {timestamp}\n")
+            f.write(f"Query: {query}\n")
+            f.write(f"Answer: {answer}\n")
+            f.write("---\n")
+        
+        logger.debug(f"Saved interaction to file: {filepath}")
+    except Exception as e:
+        logger.warning(f"Failed to save interaction to file: {str(e)}")
+        # Don't raise here as this is just backup functionality

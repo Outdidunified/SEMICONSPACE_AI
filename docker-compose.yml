@@ -47,7 +47,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "9000:9000"
+      - "9000:9000" # Host:Container port mapping
+      - "9001:9001" # Additional port for dev server
     volumes:
       - ./frontend:/app
     networks:
