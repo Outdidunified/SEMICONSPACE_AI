@@ -45,6 +45,7 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+    command: ollama pull llama3:8b-instruct-q4_K_M && ollama run llama3:8b-instruct-q4_K_M
     networks:
       default:
         ipv4_address: 172.232.110.13
