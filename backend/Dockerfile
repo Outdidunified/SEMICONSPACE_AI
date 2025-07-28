@@ -1,5 +1,5 @@
-# Multi-stage build to reduce final image size
-FROM python:3.9-slim as builder
+# Use full python image for larger disk space
+FROM python:3.9 as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

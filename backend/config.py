@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://172.232.110.10:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 TEMPERATURE = float(os.getenv("TEMPERATURE", 0.5))
 def configure_settings():

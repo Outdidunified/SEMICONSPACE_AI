@@ -1,13 +1,16 @@
-llama-index-core
-llama-index-vector-stores-faiss
-llama-index-embeddings-huggingface
-python-dotenv
+# Core requirements
 fastapi
 uvicorn
-httpx
-python-multipart
+python-dotenv
+
+# AI dependencies
+llama-index-core
 pydantic
 numpy
-sentence-transformers
 pathlib
 tqdm
+
+# Optional GPU dependencies - comment out if not using GPU
+# torch>=2.0 # Requires significant disk space
+# nvidia-cublas-cu12
+# nvidia-cudnn-cu12
