@@ -25,7 +25,7 @@ function App() {
     setMessagesByMode((prev) => ({ ...prev, [mode]: updatedMessages }));
 
     try {
-      const res = await fetch(`http://localhost:8000/${mode === "ask" ? "ask" : "ask-stream"}`, {
+      const res = await fetch(`http://localhost:9001/${mode === "ask" ? "ask" : "ask-stream"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
