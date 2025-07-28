@@ -1,26 +1,45 @@
+version: "3.8"
+
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # Resource configuration
-    deploy:
-      resources:
-        limits:
-          memory: 4G
     ports:
       - "9001:9001"
     volumes:
       - ./backend:/app
     networks:
-      default:
-        ipv4_address: 172.232.110.10
+      semiconnet:
+        ipv4_address: 172.20.0.2
     depends_on:
       - redis
       - ollama
     environment:
-      - REDIS_URL=redis://172.232.110.10:9002
-      - OLLAMA_URL=http://172.232.110.10:11434
+      - REDIS_URL=redis://172.20.0.3:6379
+      - OLLAMA_URL=http://172.20.0.4:11434
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      semiconnet:
+        ipv4_address: 172.20.0.3
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    command: >
+      sh -c "ollama pull llama3:8b-instruct-q4_K_M && ollama run llama3:8b-instruct-q4_K_M"
+    networks:
+      semiconnet:
+        ipv4_address: 172.20.0.4
 
   frontend:
     build:
@@ -31,38 +50,16 @@ services:
     volumes:
       - ./frontend:/app
     networks:
-      default:
-        ipv4_address: 172.232.110.10
-
-  redis:
-    image: redis:latest
-    ports:
-      - "9002:9002"
-    volumes:
-      - redis-data:/data
-    networks:
-      default:
-        ipv4_address: 172.232.110.10
-
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    command: ollama pull llama3:8b-instruct-q4_K_M && ollama run llama3:8b-instruct-q4_K_M
-    networks:
-      default:
-        ipv4_address: 172.232.110.10
+      semiconnet:
+        ipv4_address: 172.20.0.5
 
 volumes:
   redis-data:
   ollama-data:
 
 networks:
-  default:
+  semiconnet:
     driver: bridge
     ipam:
-      driver: default
       config:
-        - subnet: 172.232.110.0/29
+        - subnet: 172.20.0.0/29

@@ -17,10 +17,9 @@ from ai_engine.ai_engine import ask_ai, ask_ai_streaming
 # Load environment variables
 load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST", "172.232.110.10")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 9002))
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
