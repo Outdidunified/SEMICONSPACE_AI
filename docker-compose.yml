@@ -9,13 +9,13 @@ services:
       - ./backend:/app
     networks:
       default:
-        ipv4_address: 172.232.110.11
+        ipv4_address: 172.232.110.10
     depends_on:
       - redis
       - ollama
     environment:
-      - REDIS_URL=redis://172.232.110.12:9002
-      - OLLAMA_URL=http://172.232.110.13:11434
+      - REDIS_URL=redis://172.232.110.10:9002
+      - OLLAMA_URL=http://172.232.110.10:11434
 
   frontend:
     build:
@@ -37,7 +37,7 @@ services:
       - redis-data:/data
     networks:
       default:
-        ipv4_address: 172.232.110.12
+        ipv4_address: 172.232.110.10
 
   ollama:
     image: ollama/ollama:latest
@@ -48,7 +48,7 @@ services:
     command: ollama pull llama3:8b-instruct-q4_K_M && ollama run llama3:8b-instruct-q4_K_M
     networks:
       default:
-        ipv4_address: 172.232.110.13
+        ipv4_address: 172.232.110.10
 
 volumes:
   redis-data:
@@ -60,4 +60,4 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 172.232.110.0/24
+        - subnet: 172.232.110.0/29
