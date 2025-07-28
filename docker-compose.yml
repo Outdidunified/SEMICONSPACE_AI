@@ -1,4 +1,4 @@
-version: "3.8"
+version: "3.9"
 
 services:
   backend:
@@ -36,7 +36,7 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     command: >
-      sh -c "ollama pull llama3:8b-instruct-q4_K_M && ollama run llama3:8b-instruct-q4_K_M"
+      ollama pull llama3:8b-instruct-q4_K_M && ollama run llama3:8b-instruct-q4_K_M
     networks:
       semiconnet:
         ipv4_address: 172.20.0.4
