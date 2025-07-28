@@ -1,27 +1,30 @@
-# Base image
-FROM python:3.9-slim
+# Multi-stage build to reduce final image size
+FROM python:3.9-slim as builder
 
-# Set working directory
-WORKDIR /app
-
-# Install system dependencies with cleanup
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first to leverage Docker cache
+WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt \
-    && find /usr/local/lib/python3.9/site-packages -type d -name "tests" -exec rm -rf {} + \
-    && find /usr/local/lib/python3.9/site-packages -type d -name "__pycache__" -exec rm -rf {} +
 
-# Copy application code
+# Install packages to a temporary directory
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# Final stage
+FROM python:3.9-slim
+WORKDIR /app
+
+# Copy only necessary files from builder
+COPY --from=builder /install /usr/local
 COPY . .
 
-# Expose port
-EXPOSE 9001
+# Clean up Python cache
+RUN find /usr/local/lib/python3.9/site-packages -type d -name "tests" -exec rm -rf {} + \
+    && find /usr/local/lib/python3.9/site-packages -type d -name "__pycache__" -exec rm -rf {} + \
+    && rm -rf /root/.cache/pip
 
-# Command to run the application
+EXPOSE 9001
 CMD ["python", "main.py"]
