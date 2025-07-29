@@ -1,0 +1,4 @@
+Timestamp: 1753769721
+Query: what is your name
+Answer: No information about a name is provided in the given context. The context appears to be a datasheet for an analog temperature sensor called ZX-101, with details on its description, features, applications, and pin configuration. Therefore, I cannot provide an answer to the query "what is your name" as this information is not present in the context.
+---

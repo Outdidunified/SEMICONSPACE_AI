@@ -99,31 +99,15 @@ async def health_check():
         raise HTTPException(status_code=503, detail="Service unavailable")
 
 def process_response(response: str) -> str:
-    """Transform the AI response to be more conversational and extract name greetings"""
-    # Keep technical responses as-is
-    if any(word in response.lower() for word in ["datasheet", "specification", "technical"]):
-        return response
-        
-    # Detect and extract name greeting (e.g., "Ah, nice to meet [name]!")
-    if "Ah, nice to meet" in response:
-        start_idx = response.find("Ah, nice to meet") + len("Ah, nice to meet")
-        end_idx = response.find("!", start_idx)
-        if end_idx != -1:
-            return response[start_idx:end_idx + 1].strip()
+    """Clean and format the AI response"""
+    if not response or not response.strip():
+        return "I couldn't find relevant information to answer your question."
     
-    # Make learned responses more friendly
-    if "Q:" in response and "A:" in response:
-        answer = response.split("A:")[1].strip()
-        if answer.startswith(("Ah,", "Oh,", "Well,")):
-            return answer
-        return f"Ah, {answer[0].lower() + answer[1:]}"
-        
-    # Handle AI identity response
-    if "I am Semicon AI" in response:
-        return "I am Semicon AI, nice to meet you!"
+    # Clean up the response
+    response = response.strip()
     
-
-    return f" {response}"
+    # Return the response as-is for better accuracy
+    return response
 
 @app.post("/ask")
 async def ask(request: QueryRequest):
@@ -153,36 +137,31 @@ async def ask(request: QueryRequest):
                     "timestamp": datetime.now().isoformat()
                 })
 
-        # Process new query with enhanced error handling
+        # Process new query
+        result = ask_ai(request.query)
+        processed_result = process_response(result)
+        
+        # Learn from interaction (non-blocking)
+        from ai_engine.ai_engine import learn_from_interaction
         try:
-            result = ask_ai(request.query)
-            processed_result = process_response(result)
-            
-            # Learn from successful interaction
-            from ai_engine.ai_engine import learn_from_interaction
-            try:
-                learn_from_interaction(request.query, result)
-            except Exception as learn_error:
-                logger.error(f"Failed to learn from interaction: {learn_error}")
-                # Continue without failing the request
+            learn_from_interaction(request.query, result)
+        except Exception as learn_error:
+            logger.warning(f"Learning failed (non-critical): {learn_error}")
+            # Continue without failing the request
 
-            if redis_client:
+        # Cache the result
+        if redis_client:
+            try:
                 await redis_client.set(cache_key, json.dumps({"response": result}), ex=3600)
                 logger.debug("Cached new response")
+            except Exception as cache_error:
+                logger.warning(f"Caching failed (non-critical): {cache_error}")
 
-            return {
-                "response": processed_result,
-                "cached": False,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as query_error:
-            logger.error(f"Query processing failed: {query_error}")
-            return JSONResponse(content={
-                "response": "I encountered an error processing your request. Please try again.",
-                "cached": False,
-                "timestamp": datetime.now().isoformat()
-            }, status_code=200)
+        return {
+            "response": processed_result,
+            "cached": False,
+            "timestamp": datetime.now().isoformat()
+        }
 
     except Exception as e:
         logger.error(f"Request handling failed: {str(e)}")

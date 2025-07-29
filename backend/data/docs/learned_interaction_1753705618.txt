@@ -1,4 +1,0 @@
-Timestamp: 1753705618
-Query: what is your name
-Answer: I am Semicon AI, nice to meet you!
----

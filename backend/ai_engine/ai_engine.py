@@ -90,43 +90,25 @@ def ask_ai(query: str) -> str:
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
-            similarity_top_k=15,
+            similarity_top_k=10,  # Reduced for better performance
             vector_store_query_mode="default",
             alpha=0.8
         )
         
-        # Retrieve nodes and validate
-        nodes = retriever.retrieve(query)
-        valid_nodes = []
-        for node in nodes:
-            if hasattr(node, 'node') and hasattr(node.node, 'metadata') and node.node.text:
-                if node.node.node_id in index.docstore.docs:
-                    valid_nodes.append(node)
-                else:
-                    logger.warning(f"Node ID {node.node.node_id} not found in docstore, skipping")
-            else:
-                logger.warning(f"Invalid node structure, skipping: {node}")
-        
-        if not valid_nodes:
-            logger.warning("No valid nodes retrieved for query")
-            return "I couldn't find any relevant information to answer that."
-
-        # Check for AI identity query
-        if query.lower().strip() in ["tell me your name", "what is your name", "who are you"]:
-            for node in valid_nodes:
-                if "your name is" in node.node.text.lower() and "semicon ai" in node.node.text.lower():
-                    return "I am Semicon AI, nice to meet you!"
-
         query_engine = RetrieverQueryEngine.from_args(
             retriever,
             response_mode="compact",
-            timeout=10
+            timeout=15
         )
+        
         response = query_engine.query(query)
-        if not response or not hasattr(response, 'response'):
-            logger.error("Invalid response from query engine")
-            return "I encountered an issue processing your request."
-        return str(response.response)
+        
+        if not response or not str(response).strip():
+            logger.warning("Empty response from query engine")
+            return "I couldn't find relevant information to answer your question."
+            
+        return str(response)
+        
     except Exception as e:
         logger.error(f"Query processing error: {str(e)}", exc_info=True)
         return "I encountered an error while processing your request. Please try again."
@@ -163,50 +145,48 @@ async def ask_ai_streaming(query: str):
 def learn_from_interaction(query: str, answer: str):
     """Append the Q&A to the index so the system learns from interactions."""
     try:
-        index = load_or_build_index()
-        storage_context = index.storage_context
-
-        if not query.strip() or not answer.strip():
-            logger.warning("Empty query or answer in learning attempt")
+        # Validate inputs
+        if not query or not query.strip() or not answer or not answer.strip():
+            logger.warning("Empty query or answer provided for learning")
             return
 
-        combined_text = f"Q: {query}\nA: {answer}"
-        node = TextNode(text=combined_text)
-
-        node_id = str(uuid.uuid4())
+        index = load_or_build_index()
+        
+        # Create a well-formatted learning text
+        combined_text = f"Question: {query.strip()}\nAnswer: {answer.strip()}"
+        
+        # Create node with proper structure
+        node = TextNode(
+            text=combined_text,
+            id_=str(uuid.uuid4())
+        )
+        
+        # Add metadata for better retrieval
         node.metadata = {
             "type": "learned_interaction",
             "timestamp": str(int(time.time())),
-            "query": query[:100],
-            "_node_type": "TextNode",
-            "document_id": node_id,
-            "doc_id": node_id,
-            "ref_doc_id": node_id,
-            "valid": True,
-            "is_ai_identity": "your name is" in query.lower() and "semicon ai" in query.lower()
+            "source": "user_interaction",
+            "query_preview": query[:100] + "..." if len(query) > 100 else query
         }
 
-        if not all(hasattr(node, attr) for attr in ['text', 'metadata']):
-            logger.error("Invalid node structure in learning attempt")
-            return
-
-        try:
-            index.insert_nodes([node])
-            logger.debug(f"Successfully learned interaction: {node_id}")
-        except Exception as e:
-            logger.error(f"Failed to insert learned node: {str(e)}", exc_info=True)
+        # Insert the node into the index
+        index.insert_nodes([node])
+        logger.info(f"Successfully added learned interaction to index")
         
+        # Save to file for backup
         _save_interaction_to_file(query, answer)
         
+        # Persist the updated index
         try:
-            storage_context.persist(persist_dir=STORAGE_DIR)
-            logger.info(f"✅ Learned from interaction and updated the index. Persisted to {STORAGE_DIR}")
-        except Exception as e:
-            logger.error(f"Failed to persist index: {str(e)}", exc_info=True)
-            raise
+            index.storage_context.persist(persist_dir=STORAGE_DIR)
+            logger.info(f"✅ Learned interaction persisted to {STORAGE_DIR}")
+        except Exception as persist_error:
+            logger.error(f"Failed to persist learned interaction: {persist_error}")
+            # Don't raise here as the learning was successful, just persistence failed
+            
     except Exception as e:
         logger.error(f"Failed to learn from interaction: {str(e)}", exc_info=True)
-        raise
+        # Don't raise to avoid breaking the main request flow
 
 def _save_interaction_to_file(query: str, answer: str):
     """Save interaction to a file for backup and transparency"""

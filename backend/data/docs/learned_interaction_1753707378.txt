@@ -1,6 +1,0 @@
-Timestamp: 1753707378
-Query: do you know muthu is our product manager 
-Answer: Based on the provided context information, I can confidently say:
-
-"I'm not aware of any information about a person named Muthu being your product manager. The conversations we've had so far have only discussed Semicon AI's identity and your name (which was previously established as Anish). If you'd like to share more information about Muthu or their role, I'm here to listen!"
----
