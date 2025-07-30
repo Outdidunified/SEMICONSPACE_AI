@@ -10,19 +10,8 @@ services:
     networks:
       - app_net
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    command: serve
-    networks:
-      - app_net
-
 volumes:
   redis-data:
-  ollama-data:
 
 networks:
   app_net:
