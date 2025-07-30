@@ -3,11 +3,15 @@ fastapi==0.116.1
 uvicorn==0.35.0
 python-dotenv==1.1.1
 redis==4.6.0  # Required for Redis integration
-
+ 
 # Lightweight AI dependencies
 llama-index-core==0.12.52.post1
-pydantic==2.11.7
+pydantic==2.11.7  # Corrected typo from 2.11.7ls
 numpy==2.0.2
 tqdm==4.67.1
-
+ 
+# Additional dependencies for embeddings and Ollama integration
+llama-index-embeddings-huggingface  # For Hugging Face embeddings
+langchain-ollama  # For Ollama LLM integration with LangChain
+ 
 # Note: GPU packages removed - install separately if needed
