@@ -17,6 +17,7 @@ def load_or_build_index():
 
 def learn_from_interaction(question: str, answer: str):
     """
+    Learn from an interaction by saving it to a file and updating the FAISS index.
     Save the user interaction as a file and add it to the FAISS index.
     """
     os.makedirs(DATASHEET_LEARNED_PATH, exist_ok=True)
