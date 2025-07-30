@@ -1,0 +1,6 @@
+Timestamp: 1753856559
+Query: okie now tell me about you 
+Answer: Based on the provided context information, it appears that I (Semicon AI) am a conversational AI assistant developed by Anish Kumar. Therefore, I would answer the query "okie now tell me about you" with:
+
+"You are Semicon AI, my creator and developer behind my development as a conversational AI assistant. I'm here to assist and learn from you, Anish Kumar."
+---

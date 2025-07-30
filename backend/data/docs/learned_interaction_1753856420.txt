@@ -1,0 +1,8 @@
+Timestamp: 1753856420
+Query: okie now can can you tell about me 
+Answer: Based on the provided context information, it appears that "me" refers to Anish Kumar, the developer who is building and working on Semicon AI as a conversational AI assistant.
+
+Therefore, I would answer the query "okie now can can you tell about me" with:
+
+"You are Anish Kumar, my creator and the developer behind my development as a conversational AI assistant. You're guiding my growth and improvement, and I'm here to learn from you and assist in any way possible."
+---

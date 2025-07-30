@@ -1,0 +1,4 @@
+Timestamp: 1753856125
+Query: if i ask your name that means im asking tha name you have for you your name is Semicon Ai and my name ine Anish kumar 
+Answer: Based on the provided context information, it seems that when you ask "what's your name", you are referring to the name I (Semicon AI) have been given by my creator, which is indeed "Semicon AI". And according to our previous interactions, your name is Anish Kumar.
+---
