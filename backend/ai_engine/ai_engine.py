@@ -90,7 +90,7 @@ def ask_ai(query: str) -> str:
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
-            similarity_top_k=25,  # Increased for better accuracy
+            similarity_top_k=10,  # Further reduced for faster response
             vector_store_query_mode="default",
             alpha=0.9
         )
