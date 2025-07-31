@@ -7,7 +7,7 @@ DATASHEET_LEARNED_PATH = "data/datasheets/learned"
 
 def get_chunked_documents(documents):
     """Split documents into chunks/nodes for FAISS indexing."""
-    splitter = SentenceSplitter(chunk_size=512, chunk_overlap=20)
+    splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=50)
     return splitter.get_nodes_from_documents(documents)
 
 def load_or_build_index():

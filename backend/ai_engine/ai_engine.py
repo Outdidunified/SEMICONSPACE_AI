@@ -90,10 +90,14 @@ def ask_ai(query: str) -> str:
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
-            similarity_top_k=10,  # Reduced for better performance
+            similarity_top_k=25,  # Increased for better accuracy
             vector_store_query_mode="default",
-            alpha=0.8
+            alpha=0.9
         )
+        
+        # Prepend instruction for casual, human-like response
+        prompt = "Respond in a casual, friendly, and human-like manner. Do not be formal or explanatory. Answer directly and naturally.\n\n"
+        full_query = prompt + query
         
         query_engine = RetrieverQueryEngine.from_args(
             retriever,
@@ -101,7 +105,7 @@ def ask_ai(query: str) -> str:
             timeout=15
         )
         
-        response = query_engine.query(query)
+        response = query_engine.query(full_query)
         
         if not response or not str(response).strip():
             logger.warning("Empty response from query engine")
@@ -119,17 +123,22 @@ async def ask_ai_streaming(query: str):
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
-            similarity_top_k=15,
+            similarity_top_k=25,
             vector_store_query_mode="default",
-            alpha=0.8
+            alpha=0.9
         )
+        
+        # Prepend instruction for casual, human-like response
+        prompt = "Respond in a casual, friendly, and human-like manner. Do not be formal or explanatory. Answer directly and naturally.\n\n"
+        full_query = prompt + query
+        
         query_engine = RetrieverQueryEngine.from_args(
             retriever,
             streaming=True,
             response_mode="compact",
             timeout=10
         )
-        response = query_engine.query(query)
+        response = query_engine.query(full_query)
         if hasattr(response, 'response_gen') and response.response_gen is not None:
             logger.debug("Streaming response started")
             async for token in response.response_gen:

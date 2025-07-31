@@ -1,0 +1,4 @@
+Timestamp: 1753959836
+Query: how can i call you
+Answer: Hey! You can just say "Semicon AI" - that's me! I'm your custom-built assistant, here to help with coding, electronics, learning, and maybe even crack a few jokes 😄.
+---
