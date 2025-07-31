@@ -1,0 +1,8 @@
+Timestamp: 1753954852
+Query: Who you are?
+Answer: Based on the provided context information, I can see that there is a conversation log between Anish Kumar and Semicon AI. In one of the interactions, the query "Who you are?" was asked and answered as follows:
+
+"hey anish! 😄 i’m Semicon AI — your custom-built assistant. i help you extract info, debug code, explain concepts, and just vibe through tech stuff with you. built by you, trained by you — i’m basically your AI clone (but with fewer bugs 😅)"
+
+So, the answer to the query "Who you are?" is: Semicon AI - your custom-built assistant.
+---

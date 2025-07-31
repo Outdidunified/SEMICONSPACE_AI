@@ -108,23 +108,34 @@ def process_response(response: str) -> str:
     
     # Return the response as-is for better accuracy
     return response
-
 @app.post("/ask")
 async def ask(request: QueryRequest):
     """
-    Process AI query with caching
-    
-    Args:
-        query: Required question string
-        context: Optional context for the query
-        
-    Returns:
-        JSON response with answer, cache status, and timestamp
+    Process AI query with caching or handle in-chat teaching
     """
     try:
         logger.info(f"Processing query: {request.query}")
+        from ai_engine.ai_engine import learn_from_interaction
+
+        # TEACHING MODE: feed corrections via chat
+        if request.query.lower().startswith("teach:"):
+            try:
+                content = request.query[6:].strip()
+                if ">>" not in content:
+                    raise ValueError("Missing '>>' delimiter.")
+                question, answer = content.split(">>", 1)
+                learn_from_interaction(question.strip(), answer.strip())
+                return {
+                    "response": f"✅ Learned: '{question.strip()}'",
+                    "cached": False,
+                    "timestamp": datetime.now().isoformat()
+                }
+            except Exception as teach_error:
+                logger.error(f"Teach mode failed: {teach_error}")
+                raise HTTPException(status_code=400, detail="Invalid teach format. Use: teach: question >> answer")
+
         cache_key = f"query:{hash(request.query + (request.context or ''))}"
-        
+
         # Try cached response first
         if redis_client:
             cached = await redis_client.get(cache_key)
@@ -140,14 +151,12 @@ async def ask(request: QueryRequest):
         # Process new query
         result = ask_ai(request.query)
         processed_result = process_response(result)
-        
+
         # Learn from interaction (non-blocking)
-        from ai_engine.ai_engine import learn_from_interaction
         try:
             learn_from_interaction(request.query, result)
         except Exception as learn_error:
             logger.warning(f"Learning failed (non-critical): {learn_error}")
-            # Continue without failing the request
 
         # Cache the result
         if redis_client:

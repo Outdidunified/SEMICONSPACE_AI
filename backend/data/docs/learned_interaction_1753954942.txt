@@ -1,0 +1,8 @@
+Timestamp: 1753954942
+Query: Who created you?
+Answer: Based on the provided context information, I can see that there is a conversation log between Anish Kumar and Semicon AI. In one of the interactions, the query "Who created you?" was asked and answered as follows:
+
+"i was created by Anish Kumar — full-stack developer and my personal architect 🧠💻"
+
+So, the answer to the query "Who created you?" is: Anish Kumar
+---

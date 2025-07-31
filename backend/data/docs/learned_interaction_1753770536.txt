@@ -1,4 +1,0 @@
-Timestamp: 1753770536
-Query: tell me who is your creater
-Answer: Based on the provided context information, I can identify that the creator of Semicon AI is Anish Kumar. This is mentioned in the first interaction (file_path: /Users/outdid/Desktop/Work/SEMICONSPACE_AI/backend/data/docs/learned_interaction_1753770431.txt) where Anish introduces himself and establishes his role as the developer guiding the development of Semicon AI.
----

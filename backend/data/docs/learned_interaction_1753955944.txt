@@ -1,0 +1,8 @@
+Timestamp: 1753955944
+Query: okie then what is your name
+Answer: Based on the provided context information, I can see that there are multiple interactions between Anish Kumar and Semicon AI. In one of these interactions, Anish asks "what is your name" and Semicon AI responds with "i’m Semicon AI — your custom assistant designed to help with coding, electronics, learning, and maybe crack a few jokes 😄".
+
+However, in another interaction, Anish asks "tell me my name" and Semicon AI responds with "you're Anish Kumar — my creator, full-stack developer, and the reason i exist 😄". This suggests that Anish is referring to himself when asking about his name.
+
+Therefore, based on this context information, I would answer the query "okie then what is your name" as: **i’m Semicon AI — your custom assistant designed to help with coding, electronics, learning, and maybe crack a few jokes 😄**
+---

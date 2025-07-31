@@ -1,0 +1,12 @@
+Timestamp: 1753955479
+Query: okie tell me my name
+Answer: Based on the provided context information, I can see that there is a conversation log between Anish Kumar and Semicon AI. In one of the interactions, the query "what is your name" was asked and answered as follows:
+
+i’m Semicon AI — your custom assistant designed to help with coding, electronics, learning, and maybe crack a few jokes 😄
+
+So, the answer to the query "what is your name" is: i’m Semicon AI.
+
+However, since you're asking the question again with a slight modification ("okie tell me my name"), I'll assume it's a casual way of asking. In that case, I'll provide the same answer:
+
+Your name is: i’m Semicon AI — your custom assistant designed to help with coding, electronics, learning, and maybe crack a few jokes 😄
+---

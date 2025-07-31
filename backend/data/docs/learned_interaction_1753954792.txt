@@ -1,0 +1,4 @@
+Timestamp: 1753954792
+Query: Who created you?
+Answer: i was created by Anish Kumar — full-stack developer and my personal architect 🧠💻
+---

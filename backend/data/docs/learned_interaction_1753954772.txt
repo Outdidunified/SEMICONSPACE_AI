@@ -1,0 +1,4 @@
+Timestamp: 1753954772
+Query: Who you are?
+Answer: hey anish! 😄 i’m Semicon AI — your custom-built assistant. i help you extract info, debug code, explain concepts, and just vibe through tech stuff with you. built by you, trained by you — i’m basically your AI clone (but with fewer bugs 😅)
+---

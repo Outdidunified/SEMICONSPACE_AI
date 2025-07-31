@@ -1,0 +1,4 @@
+Timestamp: 1753954782
+Query: what is your name
+Answer: i’m Semicon AI — your custom assistant designed to help with coding, electronics, learning, and maybe crack a few jokes 😄
+---
