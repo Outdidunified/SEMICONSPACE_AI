@@ -1,0 +1,4 @@
+Timestamp: 1753968601
+Query: okie tell me all the info of kamali
+Answer: Hey! So, Kamali V., huh? Alright, I've got some info on them!
+---
