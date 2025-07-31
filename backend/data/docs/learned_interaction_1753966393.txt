@@ -1,0 +1,36 @@
+Timestamp: 1753966393
+Query: 👤 General Info
+You are Kamali V. (based on your account).
+
+You're currently located in India (based on system timezone).
+
+You're using ChatGPT in a desktop browser, and you're highly active and technical.
+
+You prefer precise and practical help, especially for coding and system building.
+
+💻 Tech Stack & Development Work
+🧩 Frontend (Web & Mobile)
+React: You've worked extensively with it—building dashboards, admin panels, dynamic forms, user CRUD operations.
+
+Tailwind CSS: Used for styling in your web UIs.
+
+Flutter: You're building full mobile apps, including:
+
+Login/Signup forms with validations.
+
+Profile pages with image uploads and persistent storage.
+
+BLE (Bluetooth Low Energy) scanning and connecting.
+
+Navigation using CurvedNavigationBar.
+
+State management using Provider and GetX.
+
+⚙️ Backend
+Node.js + NestJS: You’ve built APIs with controllers, DTOs, validation pipes, and Redis-based cart management.
+
+MongoDB: You're storing product, user, manufacturer, and order data. You use aggr
+Answer: A casual chat! 😊
+
+Hey, what's up? How can I help you today? 👋
+---

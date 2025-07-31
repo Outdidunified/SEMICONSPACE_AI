@@ -83,10 +83,15 @@ def validate_storage_files():
         logger.error(f"Storage validation failed: {str(e)}", exc_info=True)
         return False
 
-@lru_cache(maxsize=128)
+_cache = {}
+
 def ask_ai(query: str) -> str:
-    """Process a query using the index"""
+    """Process a query using the index with caching"""
     try:
+        if query in _cache:
+            logger.debug("Cache hit for query")
+            return _cache[query]
+
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
@@ -111,7 +116,9 @@ def ask_ai(query: str) -> str:
             logger.warning("Empty response from query engine")
             return "I couldn't find relevant information to answer your question."
             
-        return str(response)
+        result = str(response)
+        _cache[query] = result
+        return result
         
     except Exception as e:
         logger.error(f"Query processing error: {str(e)}", exc_info=True)

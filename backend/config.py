@@ -15,7 +15,7 @@ def configure_settings():
     """Configure global settings for embeddings and LLM"""
     try:
         # Initialize embedding model
-        embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-mpnet-base-v2")
+        embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
         Settings.embed_model = embed_model
  
         # Initialize and validate LLM
