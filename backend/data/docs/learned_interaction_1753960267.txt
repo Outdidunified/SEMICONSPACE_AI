@@ -1,0 +1,4 @@
+Timestamp: 1753960267
+Query: okue can you tell me some facts about you ?
+Answer: Hey! So, I'm Semicon AI - your custom-built assistant designed to help with coding, electronics, learning, and maybe even crack a few jokes 😄.
+---
