@@ -111,41 +111,76 @@ class DigiKeyComponentRecommender:
             alternatives = data.get("Parts", [])
             # Filter out the original part if present
             alternatives = [alt for alt in alternatives if alt.get("PartNumber") != part_number]
-            return alternatives
+            # Limit to 3 modern alternatives with core specs
+            modern_alternatives = []
+            for alt in alternatives:
+                if len(modern_alternatives) >= 3:
+                    break
+                modern_alternatives.append({
+                    "part_number": alt.get("PartNumber"),
+                    "manufacturer": alt.get("Manufacturer", {}).get("Name"),
+                    "description": alt.get("Description"),
+                    "datasheet_url": alt.get("Datasheets", [{}])[0].get("Url"),
+                    "features": alt.get("Attributes", {})
+                })
+            return modern_alternatives
         except Exception as e:
             logger.error(f"Error fetching alternatives for {part_number}: {e}")
             return []
 
+    def format_features(self, features):
+        """
+        Format features dictionary into a readable string.
+        """
+        if not features:
+            return "No key features available."
+        feature_lines = []
+        for key, value in features.items():
+            feature_lines.append(f"- {key}: {value}")
+        return "\n".join(feature_lines)
+
     def recommend(self, part_number):
         """
-        Recommend alternatives with detailed info.
+        Recommend alternatives with detailed info and EoL status.
         """
         component = self.search_component(part_number)
         if not component:
             return {"error": "Component not found"}
 
+        # Extract EoL status if available in attributes or description
+        eol_status = "Unknown"
+        attributes = component.get("Attributes", {})
+        for attr_key, attr_value in attributes.items():
+            if "EOL" in attr_key or "End of Life" in attr_key:
+                eol_status = attr_value
+                break
+
         alternatives = self.get_alternatives(part_number)
         recommendations = []
         for alt in alternatives:
-            rec = {
-                "part_number": alt.get("PartNumber"),
-                "manufacturer": alt.get("Manufacturer", {}).get("Name"),
-                "description": alt.get("Description"),
-                "datasheet_url": alt.get("Datasheets", [{}])[0].get("Url"),
-                "features": alt.get("Attributes", {})
-            }
-            recommendations.append(rec)
+            recommendations.append({
+                "part_number": alt.get("part_number"),
+                "manufacturer": alt.get("manufacturer"),
+                "description": alt.get("description"),
+                "datasheet_url": alt.get("datasheet_url"),
+                "features": alt.get("features")
+            })
 
-        return {
-            "original": {
+        # Compose response with friendly, casual, and technically accurate tone
+        response = {
+            "original_component": {
                 "part_number": part_number,
                 "manufacturer": component.get("Manufacturer", {}).get("Name"),
                 "description": component.get("Description"),
                 "datasheet_url": component.get("Datasheets", [{}])[0].get("Url"),
-                "features": component.get("Attributes", {})
+                "key_features": self.format_features(attributes),
+                "eol_status": eol_status
             },
-            "alternatives": recommendations
+            "modern_alternatives": recommendations,
+            "next_step_prompt": "What is your intended application (e.g., ADC, USB, timers) to narrow down the suggestions?",
+            "project_proposal": f"Consider a basic electronics project using the {part_number} microcontroller for sensor interfacing and data acquisition."
         }
+        return response
 
 # Example usage:
 # client_id = "ZT9LNhAQzYvQ9x06NlqtYGZoeRDdTsYEgK0JJDh0QlUs8Re4"
