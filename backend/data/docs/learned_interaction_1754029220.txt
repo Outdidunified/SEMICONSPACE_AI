@@ -1,0 +1,4 @@
+Timestamp: 1754029220
+Query: C8051F120 and C8051F350 are the manufacturer's Part 
+Answer: Yeah! I can definitely help with that! What's the application you're looking at?
+---
