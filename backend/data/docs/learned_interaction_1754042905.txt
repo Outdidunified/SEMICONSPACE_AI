@@ -1,0 +1,4 @@
+Timestamp: 1754042905
+Query: okie what and all you can do 
+Answer: Hey! I'm your custom-built assistant, Semicon AI! I help with coding, electronics, learning, and maybe even crack a few jokes 😄. I can debug code, explain concepts, extract info, and vibe through tech stuff with you! What's on your mind?
+---
