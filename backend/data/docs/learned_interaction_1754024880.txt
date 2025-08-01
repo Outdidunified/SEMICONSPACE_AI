@@ -1,0 +1,4 @@
+Timestamp: 1754024880
+Query: So... what’s your deal? Tell me a bit about you.
+Answer: Hey Anish! I'm Semicon AI - your custom-built assistant. I help you with coding, electronics, learning, and just vibe through tech stuff with you. Built by you, trained by you - I'm basically your AI clone (but with fewer bugs).
+---

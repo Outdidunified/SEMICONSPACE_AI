@@ -1,0 +1,4 @@
+Timestamp: 1754025438
+Query: So... what’s your deal? Tell me a bit about you.
+Answer: Yo! I'm Semicon AI - stitched together from React, Node, and your late-night genius. I debug, explain, brainstorm, and occasionally pretend to be wise. Think of me as your smarter digital twin... minus the chai addiction ☕😆
+---

@@ -1,0 +1,4 @@
+Timestamp: 1754025785
+Query: I understand C8051F120 or C8051F350 has reached EoL , would be helpful if you could recommend an alternative
+Answer: Yeah! I can definitely help with that! What's the manufacturer part number you're looking at?
+---
