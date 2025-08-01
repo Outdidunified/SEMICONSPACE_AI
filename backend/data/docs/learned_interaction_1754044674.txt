@@ -1,0 +1,10 @@
+Timestamp: 1754044674
+Query: no, TL4903 is a battery and i'm looking for an alternative for the same. Please help me out on this. Cheers!
+Answer: No worries! I'd be happy to help you with that!
+
+Unfortunately, I couldn't find any information on a component called "TLN-4903", but since it's related to batteries, I'm guessing it might be the TL4940 (not TLN4903)?
+
+If that's correct, there are some great alternatives out there. For example, you could consider the TI BQ24440 or the STMicroelectronics LDO Regulator.
+
+Let me know if any of these sound like what you're looking for, and I can give you more details!
+---
