@@ -6,7 +6,6 @@ from pydantic import BaseModel, validator
 from typing import Optional
 import uvicorn
 import asyncio
-import redis.asyncio as redis
 import json
 import logging
 from datetime import datetime
@@ -17,9 +16,6 @@ from ai_engine.ai_engine import ask_ai, ask_ai_streaming
 
 # Load environment variables
 load_dotenv()
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-REDIS_DB = int(os.getenv("REDIS_DB", 0))
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 # Configure logging
@@ -51,27 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Redis client
-redis_client: redis.Redis = None
-
-# --- APP LIFECYCLE HOOKS ---
-
-@app.on_event("startup")
-async def startup_event():
-    global redis_client
-    try:
-        redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-        await redis_client.ping()
-        logger.info("✅ Redis connected successfully.")
-    except Exception as e:
-        logger.error(f"❌ Redis connection failed: {str(e)}")
-        redis_client = None  # Fallback to no caching
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if redis_client:
-        await redis_client.close()
-        logger.info("🔌 Redis connection closed.")
+# No Redis client - using in-memory caching only
 
 # --- ROUTES ---
 
@@ -91,7 +67,7 @@ async def health_check():
     try:
         status = {
             "status": "healthy",
-            "services": {"redis": "connected" if redis_client and await redis_client.ping() else "disabled"}
+            "services": {"redis": "disabled"}
         }
         return JSONResponse(content=status)
     except Exception as e:
@@ -108,6 +84,7 @@ def process_response(response: str) -> str:
     
     # Return the response as-is for better accuracy
     return response
+
 @app.post("/ask")
 async def ask(request: QueryRequest):
     """
@@ -134,21 +111,7 @@ async def ask(request: QueryRequest):
                 logger.error(f"Teach mode failed: {teach_error}")
                 raise HTTPException(status_code=400, detail="Invalid teach format. Use: teach: question >> answer")
 
-        cache_key = f"query:{hash(request.query + (request.context or ''))}"
-
-        # Try cached response first
-        if redis_client:
-            cached = await redis_client.get(cache_key)
-            if cached:
-                logger.debug("Serving from cache")
-                cached_data = json.loads(cached)
-                return JSONResponse(content={
-                    "response": process_response(cached_data["response"]),
-                    "cached": True,
-                    "timestamp": datetime.now().isoformat()
-                })
-
-        # Process new query
+        # Process new query (no Redis caching)
         result = ask_ai(request.query)
         processed_result = process_response(result)
 
@@ -157,14 +120,6 @@ async def ask(request: QueryRequest):
             learn_from_interaction(request.query, result)
         except Exception as learn_error:
             logger.warning(f"Learning failed (non-critical): {learn_error}")
-
-        # Cache the result
-        if redis_client:
-            try:
-                await redis_client.set(cache_key, json.dumps({"response": result}), ex=3600)
-                logger.debug("Cached new response")
-            except Exception as cache_error:
-                logger.warning(f"Caching failed (non-critical): {cache_error}")
 
         return {
             "response": processed_result,

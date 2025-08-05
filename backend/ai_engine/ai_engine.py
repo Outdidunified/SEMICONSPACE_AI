@@ -125,12 +125,12 @@ def ask_ai(query: str) -> str:
         return "I encountered an error while processing your request. Please try again."
 
 async def ask_ai_streaming(query: str):
-    """Stream tokens for a query"""
+    """Stream tokens for a query using chunked response approach"""
     try:
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
-            similarity_top_k=25,
+            similarity_top_k=10,  # Reduced for faster response
             vector_store_query_mode="default",
             alpha=0.9
         )
@@ -141,22 +141,70 @@ async def ask_ai_streaming(query: str):
         
         query_engine = RetrieverQueryEngine.from_args(
             retriever,
-            streaming=True,
             response_mode="compact",
-            timeout=10
+            timeout=15
         )
+        
+        # Get full response first
         response = query_engine.query(full_query)
-        if hasattr(response, 'response_gen') and response.response_gen is not None:
-            logger.debug("Streaming response started")
-            async for token in response.response_gen:
-                logger.debug(f"Token: {token}")
-                yield token
-        else:
-            logger.warning("LLM does not support streaming, yielding full response")
-            yield str(response)
+        response_text = str(response)
+        
+        # Chunk the response for streaming-like experience
+        chunk_size = 50  # characters per chunk
+        for i in range(0, len(response_text), chunk_size):
+            chunk = response_text[i:i+chunk_size]
+            yield chunk
+            # Small delay for better UX
+            import asyncio
+            await asyncio.sleep(0.05)
+            
     except Exception as e:
         logger.error(f"Streaming query failed: {e}", exc_info=True)
-        yield "[Error] Something went wrong during response streaming]"
+        yield f"[Error] {str(e)}"
+
+def ask_ai_with_timeout(query: str, timeout: int = 30) -> str:
+    """Process a query with timeout and retry mechanism"""
+    import concurrent.futures
+    
+    def _query_with_retry():
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                index = load_or_build_index()
+                retriever = VectorIndexRetriever(
+                    index=index,
+                    similarity_top_k=8,  # Further reduced for performance
+                    vector_store_query_mode="default",
+                    alpha=0.9
+                )
+                
+                prompt = "Respond in a casual, friendly, and human-like manner. Do not be formal or explanatory. Answer directly and naturally.\n\n"
+                full_query = prompt + query
+                
+                query_engine = RetrieverQueryEngine.from_args(
+                    retriever,
+                    response_mode="compact",
+                    timeout=timeout
+                )
+                
+                response = query_engine.query(full_query)
+                return str(response)
+                
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                logger.warning(f"Query attempt {attempt + 1} failed, retrying...")
+                time.sleep(1)
+    
+    try:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(_query_with_retry)
+            return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        return "Request timed out. Please try a simpler query."
+    except Exception as e:
+        logger.error(f"Query failed: {str(e)}")
+        return "I encountered an error processing your request."
 
 def learn_from_interaction(query: str, answer: str):
     """Append the Q&A to the index so the system learns from interactions."""
