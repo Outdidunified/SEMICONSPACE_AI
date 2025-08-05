@@ -36,6 +36,15 @@ class QueryRequest(BaseModel):
             raise ValueError("Query cannot be empty")
         return v[:1000]  # Limit to 1000 characters
 
+class ChatRequest(BaseModel):
+    message: str
+
+    @validator('message')
+    def message_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Message cannot be empty")
+        return v[:1000]  # Limit to 1000 characters
+
 app = FastAPI()
 
 # CORS setup with restricted origins
@@ -143,6 +152,60 @@ async def ask_stream(request: Request):
             yield token
 
     return StreamingResponse(event_stream(), media_type="text/plain")
+
+@app.post("/api/chat")
+async def chat_endpoint(request: ChatRequest):
+    """
+    Chat endpoint with Server-Sent Events (SSE) streaming
+    """
+    try:
+        logger.info(f"Processing chat message: {request.message}")
+        
+        async def generate_sse():
+            try:
+                # Set SSE headers
+                yield "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n"
+                
+                # Get streaming response from AI
+                async for chunk in ask_ai_streaming(request.message):
+                    if chunk:
+                        # Format as OpenAI-compatible SSE
+                        sse_data = {
+                            "choices": [{
+                                "delta": {"content": chunk},
+                                "index": 0
+                            }]
+                        }
+                        yield f"data: {json.dumps(sse_data)}\n\n"
+                        await asyncio.sleep(0.05)  # Small delay for smooth streaming
+                
+                # Send completion signal
+                yield "data: [DONE]\n\n"
+                
+            except Exception as e:
+                logger.error(f"Streaming error: {str(e)}")
+                error_data = {
+                    "choices": [{
+                        "delta": {"content": f"[Error] {str(e)}"},
+                        "index": 0
+                    }]
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            generate_sse(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Chat endpoint error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error processing chat request")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=9001, reload=True)
