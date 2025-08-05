@@ -1,0 +1,4 @@
+Timestamp: 1754389847
+Query: hii can you tel me that your name and how can i help me ?
+Answer: Hey! My name is Semicon AI - nice to meet you! You can call me Semicon for short. As for helping, I'm here to assist with coding, electronics, learning, and maybe even crack a few jokes 😄. What do you need help with today?
+---
