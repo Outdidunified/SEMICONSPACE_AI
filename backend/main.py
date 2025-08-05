@@ -142,16 +142,42 @@ async def ask(request: QueryRequest):
 
 @app.post("/ask-stream")
 async def ask_stream(request: Request):
+    """Streaming endpoint with proper SSE implementation"""
     data = await request.json()
     query = data.get("query")
     if not query or not query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     async def event_stream():
-        async for token in ask_ai_streaming(query):
-            yield token
+        try:
+            yield "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n"
+            
+            async for token in ask_ai_streaming(query):
+                if token:
+                    sse_data = {
+                        "choices": [{
+                            "delta": {"content": token},
+                            "index": 0
+                        }]
+                    }
+                    yield f"data: {json.dumps(sse_data)}\n\n"
+                    await asyncio.sleep(0.01)
+            
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            logger.error(f"Streaming error: {str(e)}")
+            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/plain")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):

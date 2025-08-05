@@ -125,12 +125,14 @@ def ask_ai(query: str) -> str:
         return "I encountered an error while processing your request. Please try again."
 
 async def ask_ai_streaming(query: str):
-    """Stream tokens for a query using chunked response approach"""
+    """True streaming implementation with real-time token generation"""
+    import asyncio
+    
     try:
         index = load_or_build_index()
         retriever = VectorIndexRetriever(
             index=index,
-            similarity_top_k=10,  # Reduced for faster response
+            similarity_top_k=5,  # Reduced for faster streaming
             vector_store_query_mode="default",
             alpha=0.9
         )
@@ -139,25 +141,39 @@ async def ask_ai_streaming(query: str):
         prompt = "Respond in a casual, friendly, and human-like manner. Do not be formal or explanatory. Answer directly and naturally.\n\n"
         full_query = prompt + query
         
+        # Use streaming query engine
+        from llama_index.core.query_engine import RetrieverQueryEngine
+        
         query_engine = RetrieverQueryEngine.from_args(
             retriever,
             response_mode="compact",
-            timeout=15
+            streaming=True,  # Enable true streaming
+            timeout=30
         )
         
-        # Get full response first
-        response = query_engine.query(full_query)
-        response_text = str(response)
+        # Get streaming response
+        streaming_response = query_engine.query(full_query)
         
-        # Chunk the response for streaming-like experience
-        chunk_size = 50  # characters per chunk
-        for i in range(0, len(response_text), chunk_size):
-            chunk = response_text[i:i+chunk_size]
-            yield chunk
-            # Small delay for better UX
-            import asyncio
-            await asyncio.sleep(0.05)
-            
+        # Stream tokens as they're generated
+        if hasattr(streaming_response, 'response_gen'):
+            # Synchronous generator
+            for token in streaming_response.response_gen:
+                if token:
+                    yield token
+                    await asyncio.sleep(0.01)
+        elif hasattr(streaming_response, 'async_response_gen'):
+            # Async generator
+            async for token in streaming_response.async_response_gen():
+                if token:
+                    yield token
+                    await asyncio.sleep(0.01)
+        else:
+            # Fallback to complete response
+            response_text = str(streaming_response)
+            for char in response_text:
+                yield char
+                await asyncio.sleep(0.01)
+                
     except Exception as e:
         logger.error(f"Streaming query failed: {e}", exc_info=True)
         yield f"[Error] {str(e)}"
