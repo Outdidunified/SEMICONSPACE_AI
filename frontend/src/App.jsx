@@ -1,260 +1,225 @@
-import { useState, useRef, useEffect } from "react";
-import "./App.css";
+import React, { useState, useRef, useEffect } from 'react';
+import { fetchEventSource } from '@fortaine/fetch-event-source';
+import './App.css';
 
-function App() {
-  const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("ask"); // 'ask' or 'stream'
-  const chatRef = useRef(null);
-  const textareaRef = useRef(null);
-  const [messagesByMode, setMessagesByMode] = useState({
-    ask: [],
-    stream: [],
-  });
-  const [eventSource, setEventSource] = useState(null);
+/**
+ * @typedef {Object} Message
+ * @property {'user'|'assistant'} role
+ * @property {string} content
+ * @property {string} timestamp
+ * @property {boolean} [isStreaming]
+ */
 
-  const handleAskSubmit = async () => {
-    if (!query.trim()) return;
+/**
+ * @typedef {Object} ChatRequest
+ * @property {string} message
+ * @property {string} [context]
+ */
 
-    const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const userMsg = { type: "user", text: query, timestamp };
-    const thinkingMsg = { type: "ai", text: "⚙️ Thinking...", timestamp, isThinking: true };
-    const currentMessages = messagesByMode[mode];
-    const currentIndex = currentMessages.length;
+const App = () => {
+  const [input, setInput] = useState('');
+  const [context, setContext] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState('');
+  const chatEndRef = useRef(null);
 
-    const updatedMessages = [...currentMessages, userMsg, thinkingMsg];
-    setMessagesByMode((prev) => ({ ...prev, [mode]: updatedMessages }));
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || isStreaming) return;
+
+    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMessage = { role: 'user', content: input, timestamp };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsStreaming(true);
+    setError('');
+
+    const request = { message: input.trim(), context: context.trim() || undefined };
+    console.log('Sending request:', request);
 
     try {
-      if (mode === "ask") {
-        const res = await fetch("http://localhost:9001/ask", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query }),
-        });
-
-        if (!res.ok) throw new Error("Network response was not ok");
-
-        const data = await res.json();
-        setMessagesByMode((prev) => {
-          const updated = { ...prev };
-          updated[mode][currentIndex + 1] = { type: "ai", text: data.response, timestamp };
-          return updated;
-        });
-      } else {
-        // Use SSE for streaming
-        handleSSEChat(query, currentIndex, timestamp);
-      }
-    } catch (error) {
-      console.error("Error in handleAskSubmit:", error);
-      setMessagesByMode((prev) => {
-        const updated = { ...prev };
-        updated[mode][currentIndex + 1] = {
-          type: "ai",
-          text: "Unable to fetch response",
-          timestamp,
-        };
-        return updated;
-      });
-    }
-
-    setQuery("");
-    textareaRef.current?.focus();
-  };
-
-  const handleSSEChat = (message, currentIndex, timestamp) => {
-    // Close existing EventSource if any
-    if (eventSource) {
-      eventSource.close();
-    }
-
-    // Create new EventSource for POST request
-    // We'll use fetch with EventSource-like handling
-    const controller = new AbortController();
-
-    fetch("http://localhost:9001/ask-stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: message }),
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("Network response was not ok");
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let responseText = "";
-
-        setMessagesByMode((prev) => {
-          const updated = { ...prev };
-          updated[mode][currentIndex + 1] = { type: "ai", text: "", timestamp, isStreaming: true };
-          return updated;
-        });
-
-        // Helper to handle each SSE line
-        const handleSSELine = (line) => {
-          if (!line.startsWith('data: ')) return false;
-          const data = line.slice(6);
-
-          if (data === '[DONE]') {
-            setMessagesByMode((prev) => {
-              const updated = { ...prev };
-              updated[mode][currentIndex + 1] = {
-                type: "ai",
-                text: responseText,
-                timestamp,
-                isStreaming: false,
-              };
-              return updated;
+      await fetchEventSource('http://localhost:9001/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(request),
+        onopen(response) {
+          console.log('SSE connection opened:', response.status);
+          if (response.status === 422) {
+            response.text().then(text => {
+              console.error('Validation error:', text);
+              setError('Invalid request: ' + text);
             });
-            return true;
+            setIsStreaming(false);
+            return;
+          }
+          if (response.status >= 400) {
+            response.text().then(text => {
+              console.error('HTTP error:', response.status, text);
+              setError('Server error: ' + response.status + ' ' + text);
+            });
+            setIsStreaming(false);
+            return;
+          }
+          setMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: '', timestamp, isStreaming: true },
+          ]);
+        },
+        onmessage(event) {
+          console.log('SSE message received:', event.data);
+
+          // Handle empty or null data
+          if (!event.data || event.data.trim() === '') {
+            return;
+          }
+
+          // Handle [DONE] signal
+          if (event.data.trim() === '[DONE]') {
+            setIsStreaming(false);
+            setMessages((prev) =>
+              prev.map((msg, idx) =>
+                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
+              )
+            );
+            return;
+          }
+
+          // Remove the "data: " prefix from SSE messages if present
+          let messageData = event.data;
+          if (messageData.startsWith('data: ')) {
+            messageData = messageData.substring(6);
+          }
+
+          // Handle [DONE] after prefix removal
+          if (messageData.trim() === '[DONE]') {
+            setIsStreaming(false);
+            setMessages((prev) =>
+              prev.map((msg, idx) =>
+                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
+              )
+            );
+            return;
           }
 
           try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content || "";
-            responseText += content;
-
-            setMessagesByMode((prev) => {
-              const updated = { ...prev };
-              updated[mode][currentIndex + 1] = {
-                type: "ai",
-                text: responseText,
-                timestamp,
-                isStreaming: true,
-              };
-              return updated;
-            });
-          } catch (e) {
-            console.error("Error parsing SSE data:", e);
-          }
-          return false;
-        };
-
-        const processStream = async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n');
-
-              for (const line of lines) {
-                if (handleSSELine(line)) {
-                  return;
-                }
-              }
+            const data = JSON.parse(messageData);
+            const content = data.choices?.[0]?.delta?.content || '';
+            if (content) {
+              setMessages((prev) =>
+                prev.map((msg, idx) =>
+                  idx === prev.length - 1
+                    ? { ...msg, content: msg.content + content }
+                    : msg
+                )
+              );
             }
-          } catch (error) {
-            console.error("Stream error:", error);
-            setMessagesByMode((prev) => {
-              const updated = { ...prev };
-              updated[mode][currentIndex + 1] = {
-                type: "ai",
-                text: "Stream connection error",
-                timestamp,
-              };
-              return updated;
-            });
+          } catch (err) {
+            console.error('Error parsing SSE data:', err, 'Data:', messageData);
+            // Don't set error state for parsing issues, just log them
           }
-        };
-
-        processStream();
-      })
-      .catch((error) => {
-        console.error("Fetch error:", error);
-        setMessagesByMode((prev) => {
-          const updated = { ...prev };
-          updated[mode][currentIndex + 1] = {
-            type: "ai",
-            text: "Unable to fetch response",
-            timestamp,
-          };
-          return updated;
-        });
+        },
+        onerror(err) {
+          console.error('SSE error:', err);
+          setError('Failed to connect to the server. Please try again.');
+          setIsStreaming(false);
+          setMessages((prev) =>
+            prev.map((msg, idx) =>
+              idx === prev.length - 1
+                ? { ...msg, content: 'Connection error', isStreaming: false }
+                : msg
+            )
+          );
+        },
+        onclose() {
+          setIsStreaming(false);
+        },
       });
-  };
-
-  const handleModeChange = (newMode) => {
-    setMode(newMode);
-    // Close EventSource when switching modes
-    if (eventSource) {
-      eventSource.close();
-      setEventSource(null);
+    } catch (err) {
+      console.error('Fetch error:', err);
+      setError('An error occurred while fetching the response.');
+      setIsStreaming(false);
+      setMessages((prev) =>
+        prev.map((msg, idx) =>
+          idx === prev.length - 1
+            ? { ...msg, content: 'Connection error', isStreaming: false }
+            : msg
+        )
+      );
     }
+
+    setInput('');
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleAskSubmit();
+      handleSubmit(e);
     }
   };
 
-  const currentMessages = messagesByMode[mode];
-
-  useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
-  }, [currentMessages]);
-
-  useEffect(() => {
-    // Cleanup EventSource on unmount
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    };
-  }, [eventSource]);
-
   return (
     <div className="app-wrapper">
-      <div className="mode-selector">
-        <button
-          className={`mode-btn ${mode === "ask" ? "active" : ""}`}
-          onClick={() => handleModeChange("ask")}
-        >
-          Standard Ask
-        </button>
-        <button
-          className={`mode-btn ${mode === "stream" ? "active" : ""}`}
-          onClick={() => handleModeChange("stream")}
-        >
-          SSE Stream
-        </button>
-      </div>
-
-      <div className="chat-window" ref={chatRef} role="log" aria-live="polite">
-        <div className="response-box">
-          {messagesByMode[mode].map((msg, index) => (
+      <h1>Electronics AI Assistant</h1>
+      <div className="chat-window" role="log" aria-live="polite">
+        <div className="messages">
+          {messages.map((msg, index) => (
             <div
               key={index}
-              className={`chat-bubble ${msg.type} ${msg.isThinking ? "thinking" : msg.isStreaming ? "streaming" : ""}`}
+              className={`message ${msg.role} ${msg.isStreaming ? 'streaming' : ''}`}
             >
-              <span>{msg.text}</span>
-              <span className="message-time">{msg.timestamp}</span>
+              <div className="message-content">
+                <span className="role">{msg.role === 'user' ? 'You' : 'AI'}</span>
+                <span className="timestamp">{msg.timestamp}</span>
+                <div className="content">{msg.content}</div>
+                {msg.isStreaming && <span className="typing-indicator">▊</span>}
+              </div>
             </div>
           ))}
+          <div ref={chatEndRef} />
         </div>
       </div>
-
-      <div className="input-bar" role="form">
+      {error && <div className="error">{error}</div>}
+      <form onSubmit={handleSubmit} className="input-form">
         <textarea
-          ref={textareaRef}
+          className="context-input"
+          rows={2}
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          placeholder="Optional context (e.g., specific component or application)"
+          aria-label="Enter context for your question"
+        />
+        <textarea
           className="query-input"
           rows={2}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Semicon's AI about electronics design..."
+          placeholder="Ask about semiconductors (e.g., Explain ZX-101)"
+          disabled={isStreaming}
           aria-label="Enter your question about electronics design"
         />
-        <button className="submit-button" onClick={handleAskSubmit} aria-label="Send message">
-          ➤
-          <span className="sr-only">Send</span>
+        <button
+          type="submit"
+          disabled={isStreaming || !input.trim()}
+          className="submit-button"
+          aria-label="Send message"
+        >
+          {isStreaming ? 'Streaming...' : 'Send'}
         </button>
-      </div>
+      </form>
     </div>
   );
-}
+};
 
 export default App;

@@ -40,14 +40,12 @@ def test_ollama_connection(llm, max_retries=3, timeout=10):
 def configure_settings():
     """Configure global settings for embeddings and LLM with streaming support"""
     try:
-        # Initialize embedding model (this doesn't require Ollama)
+        # Initialize embedding model
         embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
         Settings.embed_model = embed_model
 
-        # Initialize streaming-compatible LLM with optimized settings for fast responses
+        # Initialize streaming-compatible LLM
         import httpx
-        
-        # Create custom HTTP client with optimized timeouts
         http_client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=OLLAMA_CONNECTION_TIMEOUT,
@@ -67,7 +65,6 @@ def configure_settings():
             temperature=TEMPERATURE,
             base_url=OLLAMA_URL,
             request_timeout=OLLAMA_STREAMING_TIMEOUT,
-            # Optimized parameters for faster responses
             additional_kwargs={
                 "keep_alive": OLLAMA_KEEP_ALIVE,
                 "num_predict": OLLAMA_NUM_PREDICT,
@@ -80,11 +77,10 @@ def configure_settings():
                     "stop": ["<|eot_id|>", "<|end_of_text|>"]
                 }
             },
-            # Use custom HTTP client
             http_client=http_client
         )
 
-        # Test Ollama connection if not skipped
+        # Test Ollama connection
         if not SKIP_OLLAMA_VALIDATION:
             if not test_ollama_connection(llm):
                 print(f"⚠️ Warning: Ollama at {OLLAMA_URL} is not responding. AI features will be unavailable.")
@@ -97,7 +93,7 @@ def configure_settings():
         Settings.llm = llm
         Settings.callback_manager = CallbackManager([LlamaDebugHandler()])
 
-        # Warm up the model for faster first response
+        # Warm up model
         try:
             print("🔥 Warming up model for faster responses...")
             warmup_response = llm.complete("Hi", timeout=30)
@@ -111,5 +107,4 @@ def configure_settings():
         
     except Exception as e:
         print(f"❌ Error configuring settings: {str(e)}")
-        # Don't raise the exception - allow app to start
         return False

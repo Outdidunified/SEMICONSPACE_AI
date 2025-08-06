@@ -1,7 +1,6 @@
-from fastapi import FastAPI, Request, HTTPException
-import random
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel, validator
 from typing import Optional
 import uvicorn
@@ -9,10 +8,9 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-import os
 from dotenv import load_dotenv
-
-from ai_engine.ai_engine import ask_ai, ask_ai_streaming
+from ai_engine.ai_engine import ask_ai_streaming, learn_from_interaction
+import os
 
 # Load environment variables
 load_dotenv()
@@ -26,18 +24,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class QueryRequest(BaseModel):
-    query: str
-    context: Optional[str] = None
-
-    @validator('query')
-    def query_not_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Query cannot be empty")
-        return v[:1000]  # Limit to 1000 characters
-
 class ChatRequest(BaseModel):
     message: str
+    context: Optional[str] = None
 
     @validator('message')
     def message_not_empty(cls, v):
@@ -47,18 +36,14 @@ class ChatRequest(BaseModel):
 
 app = FastAPI()
 
-# CORS setup - more permissive for development
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods including OPTIONS
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
-
-# No Redis client - using in-memory caching only
-
-# --- ROUTES ---
 
 @app.get("/")
 async def root():
@@ -76,15 +61,9 @@ async def health_check():
     try:
         from config import OLLAMA_URL, OLLAMA_MODEL, test_ollama_connection
         from llama_index.llms.ollama import Ollama
-        
-        # Test Ollama connection
         ollama_status = "unknown"
         try:
-            llm = Ollama(
-                model=OLLAMA_MODEL,
-                base_url=OLLAMA_URL,
-                request_timeout=10  # Short timeout for health check
-            )
+            llm = Ollama(model=OLLAMA_MODEL, base_url=OLLAMA_URL, request_timeout=10)
             if test_ollama_connection(llm, max_retries=1, timeout=5):
                 ollama_status = "healthy"
             else:
@@ -92,8 +71,7 @@ async def health_check():
         except Exception as ollama_error:
             logger.warning(f"Ollama health check failed: {ollama_error}")
             ollama_status = "error"
-        
-        status = {
+        return {
             "status": "healthy" if ollama_status == "healthy" else "degraded",
             "services": {
                 "redis": "disabled",
@@ -103,150 +81,66 @@ async def health_check():
             },
             "timestamp": datetime.now().isoformat()
         }
-        
-        return JSONResponse(content=status)
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         raise HTTPException(status_code=503, detail="Service unavailable")
 
-def process_response(response: str) -> str:
-    """Clean and format the AI response"""
-    if not response or not response.strip():
-        return "I couldn't find relevant information to answer your question."
-    
-    # Clean up the response
-    response = response.strip()
-    
-    # Return the response as-is for better accuracy
-    return response
-
-@app.post("/ask")
-async def ask(request: QueryRequest):
-    """
-    Fast non-streaming AI query endpoint
-    """
-    try:
-        logger.info(f"Processing query: {request.query}")
-        
-        # Process query with optimized settings
-        result = ask_ai(request.query)
-        processed_result = process_response(result)
-
-        return {
-            "response": processed_result,
-            "timestamp": datetime.now().isoformat()
-        }
-
-    except Exception as e:
-        logger.error(f"Request handling failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error processing request")
-
-@app.post("/ask-stream")
-async def ask_stream(request: Request):
-    """Streaming endpoint with proper SSE implementation"""
-    data = await request.json()
-    query = data.get("query")
-    if not query or not query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    async def event_stream():
-        try:
-            yield "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n"
-            
-            token_count = 0
-            async for token in ask_ai_streaming(query):
-                if token:
-                    token_count += 1
-                    sse_data = {
-                        "choices": [{
-                            "delta": {"content": token},
-                            "index": 0
-                        }]
-                    }
-                    yield f"data: {json.dumps(sse_data)}\n\n"
-                    # No artificial delay for maximum speed
-            
-            logger.info(f"Fast streaming completed with {token_count} tokens")
-            yield "data: [DONE]\n\n"
-            
-        except Exception as e:
-            logger.error(f"Streaming error: {str(e)}")
-            error_msg = "Service temporarily unavailable"
-            if "timeout" in str(e).lower():
-                error_msg = "Request timed out - try a shorter query"
-            
-            error_data = {
-                "choices": [{
-                    "delta": {"content": f"[Error] {error_msg}"},
-                    "index": 0
-                }]
-            }
-            yield f"data: {json.dumps(error_data)}\n\n"
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*"
-        }
-    )
-
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
-    """
-    Chat endpoint with Server-Sent Events (SSE) streaming
-    """
+    """Streaming chat endpoint with document retrieval and learning"""
     try:
         logger.info(f"Processing chat message: {request.message}")
-        
+        prompt = f"In the context of semiconductors: {request.message}"
+        if request.context:
+            prompt = f"{request.context}\n{prompt}"
+
         async def generate_sse():
             try:
-                yield "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n"
-                
+                yield 'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}\n\n'
                 chunk_count = 0
-                async for chunk in ask_ai_streaming(request.message):
+                response_text = ""
+                async for chunk in ask_ai_streaming(prompt):
                     if chunk:
                         chunk_count += 1
+                        response_text += chunk
                         sse_data = {
                             "choices": [{
                                 "delta": {"content": chunk},
                                 "index": 0
                             }]
                         }
-                        yield f"data: {json.dumps(sse_data)}\n\n"
-                        # No delay for maximum speed
+                        yield f'data: {json.dumps(sse_data)}\n\n'
+                        await asyncio.sleep(0.001)
+                        if chunk_count > 150:
+                            break
+                logger.info(f"Streaming completed with {chunk_count} chunks")
                 
-                logger.info(f"Chat streaming completed with {chunk_count} chunks")
-                yield "data: [DONE]\n\n"
+                # Learn from interaction
+                try:
+                    learn_from_interaction(request.message, response_text)
+                    logger.info("Successfully learned from interaction")
+                except Exception as learn_error:
+                    logger.warning(f"Failed to learn from interaction: {learn_error}")
                 
+                yield 'data: [DONE]\n\n'
             except Exception as e:
-                logger.error(f"Chat streaming error: {str(e)}")
+                logger.error(f"Streaming error: {str(e)}")
                 error_msg = "Service temporarily unavailable"
                 if "timeout" in str(e).lower():
                     error_msg = "Request timed out - try a shorter message"
-                
-                error_data = {
-                    "choices": [{
-                        "delta": {"content": f"[Error] {error_msg}"},
-                        "index": 0
-                    }]
-                }
-                yield f"data: {json.dumps(error_data)}\n\n"
-                yield "data: [DONE]\n\n"
+                yield f'data: {json.dumps({"choices": [{"delta": {"content": "[Error] " + error_msg}, "index": 0}]})}\n\n'
+                yield 'data: [DONE]\n\n'
 
-        return StreamingResponse(
+        return EventSourceResponse(
             generate_sse(),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
                 "Access-Control-Allow-Origin": "*"
             }
         )
-        
     except Exception as e:
         logger.error(f"Chat endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail="Error processing chat request")

@@ -8,8 +8,7 @@ class DigiKeyComponentRecommender:
     """
     Dynamic electronic component recommendation using Digi-Key API.
     """
-
-    CACHE_TTL = 3600  # Cache time-to-live in seconds
+    CACHE_TTL = 3600
 
     def __init__(self, client_id, client_secret):
         self.client_id = client_id
@@ -18,13 +17,11 @@ class DigiKeyComponentRecommender:
         self.search_url = "https://api.digikey.com/services/partsearch/v2/parts"
         self.access_token = None
         self.token_expiry = 0
-        self.component_cache = {}  # Cache for component details: {part_number: (timestamp, data)}
-        self.alternatives_cache = {}  # Cache for alternatives: {part_number: (timestamp, data)}
+        self.component_cache = {}
+        self.alternatives_cache = {}
 
     def authenticate(self):
-        """
-        Authenticate with Digi-Key API to get access token.
-        """
+        """Authenticate with Digi-Key API to get access token."""
         try:
             data = {
                 "grant_type": "client_credentials",
@@ -40,34 +37,27 @@ class DigiKeyComponentRecommender:
             token_data = response.json()
             self.access_token = token_data.get("access_token")
             expires_in = token_data.get("expires_in", 3600)
-            self.token_expiry = time.time() + expires_in - 60  # Refresh 1 min before expiry
+            self.token_expiry = time.time() + expires_in - 60
             logger.info("Authenticated with Digi-Key API successfully.")
         except Exception as e:
             logger.error(f"Failed to authenticate with Digi-Key API: {e}")
             self.access_token = None
 
     def get_access_token(self):
-        """
-        Get valid access token, refresh if expired or not present.
-        """
+        """Get valid access token, refresh if expired or not present."""
         if not self.access_token or time.time() >= self.token_expiry:
             self.authenticate()
         return self.access_token
 
     def is_cache_valid(self, cache_entry):
-        """
-        Check if cache entry is still valid based on TTL.
-        """
+        """Check if cache entry is still valid based on TTL."""
         if not cache_entry:
             return False
         timestamp, _ = cache_entry
         return (time.time() - timestamp) < self.CACHE_TTL
 
     def search_component(self, part_number):
-        """
-        Search for component details by part number using Digi-Key API with caching.
-        """
-        # Check cache first
+        """Search for component details by part number using Digi-Key API with caching."""
         cache_entry = self.component_cache.get(part_number)
         if self.is_cache_valid(cache_entry):
             return cache_entry[1]
@@ -79,7 +69,7 @@ class DigiKeyComponentRecommender:
 
         headers = {
             "X-DIGIKEY-Client-Id": self.client_id,
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {self.access_token}",
             "Accept": "application/json"
         }
         params = {
@@ -94,7 +84,6 @@ class DigiKeyComponentRecommender:
             data = response.json()
             if data.get("Parts") and len(data["Parts"]) > 0:
                 component = data["Parts"][0]
-                # Update cache
                 self.component_cache[part_number] = (time.time(), component)
                 return component
             else:
@@ -105,10 +94,7 @@ class DigiKeyComponentRecommender:
             return None
 
     def get_alternatives(self, part_number):
-        """
-        Get alternative components with caching.
-        """
-        # Check cache first
+        """Get alternative components with caching."""
         cache_entry = self.alternatives_cache.get(part_number)
         if self.is_cache_valid(cache_entry):
             return cache_entry[1]
@@ -120,35 +106,30 @@ class DigiKeyComponentRecommender:
 
         headers = {
             "X-DIGIKEY-Client-Id": self.client_id,
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {self.access_token}",
             "Accept": "application/json"
         }
         params = {
             "keywords": part_number,
-            "recordCount": 10,
+            "recordCount": 5,
             "startingRecord": 0,
-            "searchOptions": "FuzzyMatch"
+            "searchOptions": "Similar"
         }
         try:
             response = requests.get(self.search_url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
             alternatives = data.get("Parts", [])
-            # Filter out the original part if present
-            alternatives = [alt for alt in alternatives if alt.get("PartNumber") != part_number]
-            # Limit to 3 modern alternatives with core specs
-            modern_alternatives = []
-            for alt in alternatives:
-                if len(modern_alternatives) >= 3:
-                    break
-                modern_alternatives.append({
+            modern_alternatives = [
+                {
                     "part_number": alt.get("PartNumber"),
                     "manufacturer": alt.get("Manufacturer", {}).get("Name"),
                     "description": alt.get("Description"),
                     "datasheet_url": alt.get("Datasheets", [{}])[0].get("Url"),
                     "features": alt.get("Attributes", {})
-                })
-            # Update cache
+                }
+                for alt in alternatives
+            ]
             self.alternatives_cache[part_number] = (time.time(), modern_alternatives)
             return modern_alternatives
         except Exception as e:
@@ -156,9 +137,7 @@ class DigiKeyComponentRecommender:
             return []
 
     def format_features(self, features):
-        """
-        Format features dictionary into a readable string.
-        """
+        """Format features dictionary into a readable string."""
         if not features:
             return "No key features available."
         feature_lines = []
@@ -167,9 +146,7 @@ class DigiKeyComponentRecommender:
         return "\n".join(feature_lines)
 
     def generate_human_like_response(self, part_number, component, eol_status, recommendations):
-        """
-        Generate a friendly, casual, and human-like response string.
-        """
+        """Generate a friendly, casual, and human-like response string."""
         response_lines = []
         response_lines.append(f"Hey! Here's what I found about the component '{part_number}':\n")
         response_lines.append(f"Manufacturer: {component.get('Manufacturer', {}).get('Name', 'Unknown')}")
@@ -189,18 +166,14 @@ class DigiKeyComponentRecommender:
 
         response_lines.append("What is your intended application (e.g., ADC, USB, timers) to help me narrow down the suggestions?")
         response_lines.append(f"Also, you might want to try a basic electronics project using the {part_number} microcontroller for sensor interfacing and data acquisition. Let me know if you want details!")
-
         return "\n".join(response_lines)
 
     def recommend(self, part_number):
-        """
-        Recommend alternatives with detailed info and EoL status.
-        """
+        """Recommend alternatives with detailed info and EoL status."""
         component = self.search_component(part_number)
         if not component:
             return {"error": "Component not found"}
 
-        # Extract EoL status if available in attributes or description
         eol_status = "Unknown"
         attributes = component.get("Attributes", {})
         for attr_key, attr_value in attributes.items():
@@ -219,10 +192,7 @@ class DigiKeyComponentRecommender:
                 "features": alt.get("features")
             })
 
-        # Generate human-like response string
         human_response = self.generate_human_like_response(part_number, component, eol_status, recommendations)
-
-        # Compose response dictionary with both structured data and human-like text
         response = {
             "original_component": {
                 "part_number": part_number,
@@ -236,11 +206,3 @@ class DigiKeyComponentRecommender:
             "human_like_response": human_response
         }
         return response
-
-
-# Example usage:
-# client_id = "ZT9LNhAQzYvQ9x06NlqtYGZoeRDdTsYEgK0JJDh0QlUs8Re4"
-# client_secret = "hQrLAiEuT73MvLmSjReuIGLvNdygRwb8E91P7UXYdK5CaUeyzYrFcKf6Gvvrjs25"
-# recommender = DigiKeyComponentRecommender(client_id, client_secret)
-# result = recommender.recommend("ATmega328P")
-# print(result)
