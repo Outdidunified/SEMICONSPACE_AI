@@ -104,10 +104,11 @@ def ask_ai(query: str) -> str:
         prompt = "Respond in a casual, friendly, and human-like manner. Do not be formal or explanatory. Answer directly and naturally.\n\n"
         full_query = prompt + query
         
+        from config import OLLAMA_TIMEOUT
         query_engine = RetrieverQueryEngine.from_args(
             retriever,
             response_mode="compact",
-            timeout=15
+            timeout=OLLAMA_TIMEOUT
         )
         
         response = query_engine.query(full_query)
@@ -125,62 +126,101 @@ def ask_ai(query: str) -> str:
         return "I encountered an error while processing your request. Please try again."
 
 async def ask_ai_streaming(query: str):
-    """True streaming implementation with real-time token generation"""
+    """Optimized streaming implementation for super fast responses"""
     import asyncio
+    from config import OLLAMA_STREAMING_TIMEOUT
+    from llama_index.core import Settings
     
     try:
-        index = load_or_build_index()
-        retriever = VectorIndexRetriever(
-            index=index,
-            similarity_top_k=5,  # Reduced for faster streaming
-            vector_store_query_mode="default",
-            alpha=0.9
-        )
+        logger.info("Starting optimized streaming query")
         
-        # Prepend instruction for casual, human-like response
-        prompt = "Respond in a casual, friendly, and human-like manner. Do not be formal or explanatory. Answer directly and naturally.\n\n"
-        full_query = prompt + query
+        # Use direct LLM streaming for maximum speed (bypass index for now)
+        llm = Settings.llm
+        if not llm:
+            yield "[Error] AI service not available"
+            return
         
-        # Use streaming query engine
-        from llama_index.core.query_engine import RetrieverQueryEngine
+        # Simplified prompt for faster processing
+        optimized_prompt = f"Answer briefly and directly: {query}"
         
-        query_engine = RetrieverQueryEngine.from_args(
-            retriever,
-            response_mode="compact",
-            streaming=True,  # Enable true streaming
-            timeout=30
-        )
-        
-        # Get streaming response
-        streaming_response = query_engine.query(full_query)
-        
-        # Stream tokens as they're generated
-        if hasattr(streaming_response, 'response_gen'):
-            # Synchronous generator
-            for token in streaming_response.response_gen:
-                if token:
-                    yield token
-                    await asyncio.sleep(0.01)
-        elif hasattr(streaming_response, 'async_response_gen'):
-            # Async generator
-            async for token in streaming_response.async_response_gen():
-                if token:
-                    yield token
-                    await asyncio.sleep(0.01)
-        else:
-            # Fallback to complete response
-            response_text = str(streaming_response)
-            for char in response_text:
-                yield char
-                await asyncio.sleep(0.01)
+        # Direct streaming from LLM
+        try:
+            streaming_response = llm.stream_complete(optimized_prompt)
+            
+            token_count = 0
+            for token in streaming_response:
+                if token and token.delta:
+                    token_count += 1
+                    yield token.delta
+                    # Minimal delay for super fast streaming
+                    await asyncio.sleep(0.001)
+                    
+                    # Limit response length for speed
+                    if token_count > 200:
+                        break
+            
+            logger.info(f"Fast streaming completed with {token_count} tokens")
+            
+        except Exception as direct_error:
+            logger.warning(f"Direct streaming failed, falling back to index: {direct_error}")
+            
+            # Fallback to index-based streaming with minimal retrieval
+            try:
+                index = load_or_build_index()
+                retriever = VectorIndexRetriever(
+                    index=index,
+                    similarity_top_k=2,  # Minimal retrieval for speed
+                    vector_store_query_mode="default",
+                    alpha=0.9
+                )
+                
+                from llama_index.core.query_engine import RetrieverQueryEngine
+                
+                query_engine = RetrieverQueryEngine.from_args(
+                    retriever,
+                    response_mode="compact",
+                    streaming=True,
+                    timeout=OLLAMA_STREAMING_TIMEOUT
+                )
+                
+                streaming_response = query_engine.query(f"Answer briefly: {query}")
+                
+                if hasattr(streaming_response, 'response_gen'):
+                    token_count = 0
+                    for token in streaming_response.response_gen:
+                        if token:
+                            token_count += 1
+                            yield token
+                            await asyncio.sleep(0.001)
+                            
+                            # Limit for speed
+                            if token_count > 150:
+                                break
+                else:
+                    # Character-by-character streaming as last resort
+                    response_text = str(streaming_response)[:500]  # Limit length
+                    for char in response_text:
+                        yield char
+                        await asyncio.sleep(0.001)
+                        
+            except Exception as fallback_error:
+                logger.error(f"Fallback streaming failed: {fallback_error}")
+                yield "[Error] Unable to generate response. Please try again."
                 
     except Exception as e:
-        logger.error(f"Streaming query failed: {e}", exc_info=True)
-        yield f"[Error] {str(e)}"
+        logger.error(f"Streaming error: {e}", exc_info=True)
+        error_msg = "Service temporarily unavailable. Please try again."
+        if "timeout" in str(e).lower():
+            error_msg = "Response timed out. Try a shorter question."
+        yield f"[Error] {error_msg}"
 
-def ask_ai_with_timeout(query: str, timeout: int = 30) -> str:
+def ask_ai_with_timeout(query: str, timeout: int = None) -> str:
     """Process a query with timeout and retry mechanism"""
     import concurrent.futures
+    from config import OLLAMA_TIMEOUT
+    
+    if timeout is None:
+        timeout = int(OLLAMA_TIMEOUT)
     
     def _query_with_retry():
         max_retries = 3

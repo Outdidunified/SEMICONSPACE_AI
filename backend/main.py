@@ -16,7 +16,7 @@ from ai_engine.ai_engine import ask_ai, ask_ai_streaming
 
 # Load environment variables
 load_dotenv()
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:9000,http://localhost:3000,http://127.0.0.1:9000,http://127.0.0.1:3000,*").split(",")
 
 # Configure logging
 logging.basicConfig(
@@ -47,13 +47,13 @@ class ChatRequest(BaseModel):
 
 app = FastAPI()
 
-# CORS setup with restricted origins
+# CORS setup - more permissive for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods including OPTIONS
+    allow_headers=["*"],  # Allow all headers
 )
 
 # No Redis client - using in-memory caching only
@@ -72,12 +72,38 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with AI service status"""
     try:
+        from config import OLLAMA_URL, OLLAMA_MODEL, test_ollama_connection
+        from llama_index.llms.ollama import Ollama
+        
+        # Test Ollama connection
+        ollama_status = "unknown"
+        try:
+            llm = Ollama(
+                model=OLLAMA_MODEL,
+                base_url=OLLAMA_URL,
+                request_timeout=10  # Short timeout for health check
+            )
+            if test_ollama_connection(llm, max_retries=1, timeout=5):
+                ollama_status = "healthy"
+            else:
+                ollama_status = "unhealthy"
+        except Exception as ollama_error:
+            logger.warning(f"Ollama health check failed: {ollama_error}")
+            ollama_status = "error"
+        
         status = {
-            "status": "healthy",
-            "services": {"redis": "disabled"}
+            "status": "healthy" if ollama_status == "healthy" else "degraded",
+            "services": {
+                "redis": "disabled",
+                "ollama": ollama_status,
+                "ollama_url": OLLAMA_URL,
+                "ollama_model": OLLAMA_MODEL
+            },
+            "timestamp": datetime.now().isoformat()
         }
+        
         return JSONResponse(content=status)
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
@@ -97,42 +123,17 @@ def process_response(response: str) -> str:
 @app.post("/ask")
 async def ask(request: QueryRequest):
     """
-    Process AI query with caching or handle in-chat teaching
+    Fast non-streaming AI query endpoint
     """
     try:
         logger.info(f"Processing query: {request.query}")
-        from ai_engine.ai_engine import learn_from_interaction
-
-        # TEACHING MODE: feed corrections via chat
-        if request.query.lower().startswith("teach:"):
-            try:
-                content = request.query[6:].strip()
-                if ">>" not in content:
-                    raise ValueError("Missing '>>' delimiter.")
-                question, answer = content.split(">>", 1)
-                learn_from_interaction(question.strip(), answer.strip())
-                return {
-                    "response": f"✅ Learned: '{question.strip()}'",
-                    "cached": False,
-                    "timestamp": datetime.now().isoformat()
-                }
-            except Exception as teach_error:
-                logger.error(f"Teach mode failed: {teach_error}")
-                raise HTTPException(status_code=400, detail="Invalid teach format. Use: teach: question >> answer")
-
-        # Process new query (no Redis caching)
+        
+        # Process query with optimized settings
         result = ask_ai(request.query)
         processed_result = process_response(result)
 
-        # Learn from interaction (non-blocking)
-        try:
-            learn_from_interaction(request.query, result)
-        except Exception as learn_error:
-            logger.warning(f"Learning failed (non-critical): {learn_error}")
-
         return {
             "response": processed_result,
-            "cached": False,
             "timestamp": datetime.now().isoformat()
         }
 
@@ -152,8 +153,10 @@ async def ask_stream(request: Request):
         try:
             yield "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n"
             
+            token_count = 0
             async for token in ask_ai_streaming(query):
                 if token:
+                    token_count += 1
                     sse_data = {
                         "choices": [{
                             "delta": {"content": token},
@@ -161,13 +164,25 @@ async def ask_stream(request: Request):
                         }]
                     }
                     yield f"data: {json.dumps(sse_data)}\n\n"
-                    await asyncio.sleep(0.01)
+                    # No artificial delay for maximum speed
             
+            logger.info(f"Fast streaming completed with {token_count} tokens")
             yield "data: [DONE]\n\n"
             
         except Exception as e:
             logger.error(f"Streaming error: {str(e)}")
-            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
+            error_msg = "Service temporarily unavailable"
+            if "timeout" in str(e).lower():
+                error_msg = "Request timed out - try a shorter query"
+            
+            error_data = {
+                "choices": [{
+                    "delta": {"content": f"[Error] {error_msg}"},
+                    "index": 0
+                }]
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -189,13 +204,12 @@ async def chat_endpoint(request: ChatRequest):
         
         async def generate_sse():
             try:
-                # Set SSE headers
                 yield "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n"
                 
-                # Get streaming response from AI
+                chunk_count = 0
                 async for chunk in ask_ai_streaming(request.message):
                     if chunk:
-                        # Format as OpenAI-compatible SSE
+                        chunk_count += 1
                         sse_data = {
                             "choices": [{
                                 "delta": {"content": chunk},
@@ -203,16 +217,20 @@ async def chat_endpoint(request: ChatRequest):
                             }]
                         }
                         yield f"data: {json.dumps(sse_data)}\n\n"
-                        await asyncio.sleep(0.05)  # Small delay for smooth streaming
+                        # No delay for maximum speed
                 
-                # Send completion signal
+                logger.info(f"Chat streaming completed with {chunk_count} chunks")
                 yield "data: [DONE]\n\n"
                 
             except Exception as e:
-                logger.error(f"Streaming error: {str(e)}")
+                logger.error(f"Chat streaming error: {str(e)}")
+                error_msg = "Service temporarily unavailable"
+                if "timeout" in str(e).lower():
+                    error_msg = "Request timed out - try a shorter message"
+                
                 error_data = {
                     "choices": [{
-                        "delta": {"content": f"[Error] {str(e)}"},
+                        "delta": {"content": f"[Error] {error_msg}"},
                         "index": 0
                     }]
                 }

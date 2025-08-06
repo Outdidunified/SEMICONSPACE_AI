@@ -20,8 +20,10 @@ os.makedirs(PERSIST_DIR, exist_ok=True)  # Ensure directory exists
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Configure settings
-configure_settings()
+# Configure settings - allow app to start even if Ollama is unavailable
+ollama_configured = configure_settings()
+if not ollama_configured:
+    print("⚠️ AI features will be unavailable until Ollama is running")
 
 # Global index to cache in-memory instance
 _index = None
