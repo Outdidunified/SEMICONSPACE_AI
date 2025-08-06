@@ -1,18 +1,20 @@
 import os
 import logging
-from llama_index.core import VectorStoreIndex, StorageContext, SimpleDirectoryReader, Settings
+from llama_index.core import VectorStoreIndex, StorageContext, SimpleDirectoryReader
 from llama_index.core.vector_stores.simple import SimpleVectorStore
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from pathlib import Path
 from datetime import datetime
 import json
 from utils import get_chunked_documents
 from config import configure_settings
+from .index_manager import IndexManager
 
 # Constants
 PERSIST_DIR = "data/simple"
 DATASHEET_DIR = "data/datasheets"
 MEMORY_DIR = "data/docs"
+
+# Ensure directories exist
 os.makedirs(MEMORY_DIR, exist_ok=True)
 os.makedirs(PERSIST_DIR, exist_ok=True)
 
@@ -27,6 +29,11 @@ if not ollama_configured:
 
 # Global index
 _index = None
+index_manager = IndexManager(
+    persist_dir=PERSIST_DIR,
+    memory_dir=MEMORY_DIR,
+    datasheet_dir=DATASHEET_DIR
+)
 
 def get_documents():
     """Load documents from memory and datasheet directories"""
@@ -63,6 +70,7 @@ def create_index():
         
         storage_context.persist(persist_dir=PERSIST_DIR)
         logger.info(f"New index persisted to {PERSIST_DIR} at {datetime.now().isoformat()}")
+        index_manager.mark_index_built()
     except Exception as e:
         logger.error(f"Failed to create or persist index: {str(e)}")
         raise
@@ -73,39 +81,18 @@ def load_or_build_index():
     """Load existing persisted index or create new if not available"""
     global _index
     logger.info(f"Attempting to load persisted index from {PERSIST_DIR}")
-    try:
-        required_files = ["vector_store.json", "docstore.json", "index_store.json", "graph_store.json"]
-        all_files_exist = all(os.path.exists(os.path.join(PERSIST_DIR, f)) for f in required_files)
-        
-        if all_files_exist:
-            with open(os.path.join(PERSIST_DIR, "vector_store.json"), "r") as f:
-                vector_data = json.load(f)
-                if not vector_data:
-                    raise ValueError("Vector store is empty - requires rebuild")
-                    
-            with open(os.path.join(PERSIST_DIR, "graph_store.json"), "r") as f:
-                graph_data = json.load(f)
-                if not graph_data.get("graph_dict"):
-                    raise ValueError("Graph store is empty - requires rebuild")
 
-            storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
-            _index = VectorStoreIndex(nodes=[], storage_context=storage_context)
-            logger.info(f"Loaded existing persisted index from {PERSIST_DIR}")
-            return _index
-        else:
-            logger.info(f"Missing storage files in {PERSIST_DIR}. Creating new...")
+    if index_manager.should_rebuild_index():
+        logger.info("Rebuilding index due to changes or missing files")
+        return create_index()
+
+    try:
+        storage_context = StorageContext.from_defaults(persist_dir=PERSIST_DIR)
+        _index = VectorStoreIndex(nodes=[], storage_context=storage_context)
+        logger.info(f"Loaded existing persisted index from {PERSIST_DIR}")
+        return _index
     except Exception as e:
         logger.warning(f"Failed to load persisted index: {str(e)}. Rebuilding...")
-        for file in required_files:
-            file_path = os.path.join(PERSIST_DIR, file)
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                    logger.debug(f"Removed problematic file: {file_path}")
-                except Exception as remove_error:
-                    logger.error(f"Failed to remove file {file_path}: {remove_error}")
-
-    logger.info("Creating new in-memory index...")
-    return create_index()
+        return create_index()
 
 load_index = load_or_build_index
