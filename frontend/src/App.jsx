@@ -71,10 +71,10 @@ function App() {
     // We'll use fetch with EventSource-like handling
     const controller = new AbortController();
 
-    fetch("http://localhost:9001/api/chat", {
+    fetch("http://localhost:9001/ask-stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ query: message }),
       signal: controller.signal,
     })
       .then((response) => {

@@ -28,12 +28,12 @@ const StreamingChat = () => {
         try {
             const controller = new AbortController();
 
-            await fetchEventSource('http://localhost:9001/api/chat', {
+            await fetchEventSource('http://localhost:9001/ask-stream', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message }),
+                body: JSON.stringify({ query: message }),
                 signal: controller.signal,
                 onopen: async (response) => {
                     if (response.ok) {
