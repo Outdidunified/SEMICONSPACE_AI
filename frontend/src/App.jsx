@@ -2,20 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { fetchEventSource } from '@fortaine/fetch-event-source';
 import './App.css';
 
-/**
- * @typedef {Object} Message
- * @property {'user'|'assistant'} role
- * @property {string} content
- * @property {string} timestamp
- * @property {boolean} [isStreaming]
- */
-
-/**
- * @typedef {Object} ChatRequest
- * @property {string} message
- * @property {string} [context]
- */
-
 const App = () => {
   const [input, setInput] = useState('');
   const [context, setContext] = useState('');
@@ -43,7 +29,6 @@ const App = () => {
     setError('');
 
     const request = { message: input.trim(), context: context.trim() || undefined };
-    console.log('Sending request:', request);
 
     try {
       await fetchEventSource('http://localhost:9001/api/chat', {
@@ -54,108 +39,47 @@ const App = () => {
         },
         body: JSON.stringify(request),
         onopen(response) {
-          console.log('SSE connection opened:', response.status);
-          if (response.status === 422) {
-            response.text().then(text => {
-              console.error('Validation error:', text);
-              setError('Invalid request: ' + text);
-            });
-            setIsStreaming(false);
-            return;
-          }
           if (response.status >= 400) {
             response.text().then(text => {
-              console.error('HTTP error:', response.status, text);
               setError('Server error: ' + response.status + ' ' + text);
             });
             setIsStreaming(false);
             return;
           }
-          setMessages((prev) => [
-            ...prev,
-            { role: 'assistant', content: '', timestamp, isStreaming: true },
-          ]);
+          setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp, isStreaming: true }]);
         },
         onmessage(event) {
-          console.log('SSE message received:', event.data);
-
-          // Handle empty or null data
-          if (!event.data || event.data.trim() === '') {
-            return;
-          }
-
-          // Handle [DONE] signal
-          if (event.data.trim() === '[DONE]') {
+          if (!event.data?.trim() || event.data.trim() === '[DONE]') {
             setIsStreaming(false);
-            setMessages((prev) =>
-              prev.map((msg, idx) =>
-                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
-              )
-            );
+            setMessages((prev) => prev.map((msg, i) => i === prev.length - 1 ? { ...msg, isStreaming: false } : msg));
             return;
           }
 
-          // Remove the "data: " prefix from SSE messages if present
-          let messageData = event.data;
-          if (messageData.startsWith('data: ')) {
-            messageData = messageData.substring(6);
-          }
-
-          // Handle [DONE] after prefix removal
-          if (messageData.trim() === '[DONE]') {
-            setIsStreaming(false);
-            setMessages((prev) =>
-              prev.map((msg, idx) =>
-                idx === prev.length - 1 ? { ...msg, isStreaming: false } : msg
-              )
-            );
-            return;
-          }
+          let messageData = event.data.startsWith('data: ') ? event.data.substring(6) : event.data;
 
           try {
             const data = JSON.parse(messageData);
             const content = data.choices?.[0]?.delta?.content || '';
             if (content) {
-              setMessages((prev) =>
-                prev.map((msg, idx) =>
-                  idx === prev.length - 1
-                    ? { ...msg, content: msg.content + content }
-                    : msg
-                )
-              );
+              setMessages((prev) => prev.map((msg, i) => i === prev.length - 1 ? { ...msg, content: msg.content + content } : msg));
             }
-          } catch (err) {
-            console.error('Error parsing SSE data:', err, 'Data:', messageData);
-            // Don't set error state for parsing issues, just log them
+          } catch {
+            // Intentionally ignore JSON parse errors for streaming chunks
           }
         },
-        onerror(err) {
-          console.error('SSE error:', err);
+        onerror() {
           setError('Failed to connect to the server. Please try again.');
           setIsStreaming(false);
-          setMessages((prev) =>
-            prev.map((msg, idx) =>
-              idx === prev.length - 1
-                ? { ...msg, content: 'Connection error', isStreaming: false }
-                : msg
-            )
-          );
+          setMessages((prev) => prev.map((msg, i) => i === prev.length - 1 ? { ...msg, content: 'Connection error', isStreaming: false } : msg));
         },
         onclose() {
           setIsStreaming(false);
         },
       });
-    } catch (err) {
-      console.error('Fetch error:', err);
+    } catch {
       setError('An error occurred while fetching the response.');
       setIsStreaming(false);
-      setMessages((prev) =>
-        prev.map((msg, idx) =>
-          idx === prev.length - 1
-            ? { ...msg, content: 'Connection error', isStreaming: false }
-            : msg
-        )
-      );
+      setMessages((prev) => prev.map((msg, i) => i === prev.length - 1 ? { ...msg, content: 'Connection error', isStreaming: false } : msg));
     }
 
     setInput('');
@@ -169,54 +93,50 @@ const App = () => {
   };
 
   return (
-    <div className="app-wrapper">
-      <h1>Electronics AI Assistant</h1>
-      <div className="chat-window" role="log" aria-live="polite">
-        <div className="messages">
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`message ${msg.role} ${msg.isStreaming ? 'streaming' : ''}`}
-            >
-              <div className="message-content">
-                <span className="role">{msg.role === 'user' ? 'You' : 'AI'}</span>
-                <span className="timestamp">{msg.timestamp}</span>
-                <div className="content">{msg.content}</div>
-                {msg.isStreaming && <span className="typing-indicator">▊</span>}
-              </div>
+    <div className="flex flex-col items-center min-h-screen p-6 bg-gray-100">
+      <h1 className="text-3xl font-bold text-blue-700 mb-4">🔌 Semicon AI Assistant</h1>
+      <div className="w-full max-w-3xl bg-white rounded-xl shadow-md p-4 overflow-y-auto h-[70vh]">
+        {messages.map((msg, i) => (
+          <div key={i} className={`mb-3 p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-50' : 'bg-green-50'}`}>
+            <div className="text-xs text-gray-500 flex justify-between">
+              <span>{msg.role === 'user' ? 'You' : 'Semicon AI'}</span>
+              <span>{msg.timestamp}</span>
             </div>
-          ))}
-          <div ref={chatEndRef} />
-        </div>
+            <div className="mt-1 text-sm whitespace-pre-wrap">{msg.content}</div>
+            {msg.isStreaming && <span className="animate-pulse text-xs text-gray-400">▊ typing...</span>}
+          </div>
+        ))}
+        <div ref={chatEndRef} />
       </div>
-      {error && <div className="error">{error}</div>}
-      <form onSubmit={handleSubmit} className="input-form">
+
+      {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
+
+      <form onSubmit={handleSubmit} className="mt-4 w-full max-w-3xl space-y-2">
         <textarea
-          className="context-input"
+          className="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
           rows={2}
           value={context}
           onChange={(e) => setContext(e.target.value)}
-          placeholder="Optional context (e.g., specific component or application)"
-          aria-label="Enter context for your question"
+          placeholder="Optional context (e.g., component or target app)"
         />
-        <textarea
-          className="query-input"
-          rows={2}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask about semiconductors (e.g., Explain ZX-101)"
-          disabled={isStreaming}
-          aria-label="Enter your question about electronics design"
-        />
-        <button
-          type="submit"
-          disabled={isStreaming || !input.trim()}
-          className="submit-button"
-          aria-label="Send message"
-        >
-          {isStreaming ? 'Streaming...' : 'Send'}
-        </button>
+        <div className="flex items-center gap-2">
+          <textarea
+            className="flex-1 p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            rows={2}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask anything about electronics, parts, or circuits..."
+            disabled={isStreaming}
+          />
+          <button
+            type="submit"
+            disabled={isStreaming || !input.trim()}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md"
+          >
+            {isStreaming ? '⏳' : 'Send'}
+          </button>
+        </div>
       </form>
     </div>
   );
