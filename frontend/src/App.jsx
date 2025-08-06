@@ -45,6 +45,7 @@ function App() {
         handleSSEChat(query, currentIndex, timestamp);
       }
     } catch (error) {
+      console.error("Error in handleAskSubmit:", error);
       setMessagesByMode((prev) => {
         const updated = { ...prev };
         updated[mode][currentIndex + 1] = {
@@ -89,6 +90,46 @@ function App() {
           return updated;
         });
 
+        // Helper to handle each SSE line
+        const handleSSELine = (line) => {
+          if (!line.startsWith('data: ')) return false;
+          const data = line.slice(6);
+
+          if (data === '[DONE]') {
+            setMessagesByMode((prev) => {
+              const updated = { ...prev };
+              updated[mode][currentIndex + 1] = {
+                type: "ai",
+                text: responseText,
+                timestamp,
+                isStreaming: false,
+              };
+              return updated;
+            });
+            return true;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content || "";
+            responseText += content;
+
+            setMessagesByMode((prev) => {
+              const updated = { ...prev };
+              updated[mode][currentIndex + 1] = {
+                type: "ai",
+                text: responseText,
+                timestamp,
+                isStreaming: true,
+              };
+              return updated;
+            });
+          } catch (e) {
+            console.error("Error parsing SSE data:", e);
+          }
+          return false;
+        };
+
         const processStream = async () => {
           try {
             while (true) {
@@ -99,41 +140,8 @@ function App() {
               const lines = chunk.split('\n');
 
               for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6);
-
-                  if (data === '[DONE]') {
-                    setMessagesByMode((prev) => {
-                      const updated = { ...prev };
-                      updated[mode][currentIndex + 1] = {
-                        type: "ai",
-                        text: responseText,
-                        timestamp,
-                        isStreaming: false,
-                      };
-                      return updated;
-                    });
-                    return;
-                  }
-
-                  try {
-                    const parsed = JSON.parse(data);
-                    const content = parsed.choices?.[0]?.delta?.content || "";
-                    responseText += content;
-
-                    setMessagesByMode((prev) => {
-                      const updated = { ...prev };
-                      updated[mode][currentIndex + 1] = {
-                        type: "ai",
-                        text: responseText,
-                        timestamp,
-                        isStreaming: true,
-                      };
-                      return updated;
-                    });
-                  } catch (e) {
-                    console.error("Error parsing SSE data:", e);
-                  }
+                if (handleSSELine(line)) {
+                  return;
                 }
               }
             }
